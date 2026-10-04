@@ -392,10 +392,6 @@
       box-shadow: 0 20px 50px rgba(0,0,0,.92), 0 0 35px rgba(0,255,157,.45) !important;
       border: 1px solid var(--accent) !important;
     }
-    .preview-card.zoomed .preview-rank {
-      transform: scale(0.85);
-      transform-origin: top left;
-    }
     .preview-card.landscape {
       width: clamp(140px, 28vw, 190px);
       aspect-ratio: 16/9;
@@ -428,22 +424,6 @@
       object-fit: cover;
       display: block;
       transition: opacity .3s;
-    }
-    .preview-rank {
-      position: absolute;
-      top: 5px;
-      left: 5px;
-      font-family: var(--font-mono);
-      font-size: 9px;
-      font-weight: 700;
-      background: rgba(0,0,0,.8);
-      color: var(--accent);
-      padding: 2px 5px;
-      border-radius: 4px;
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(0,255,157,.3);
-      pointer-events: none;
-      z-index: 2;
     }
 
     .skeleton { height: 68px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, rgba(255,255,255,.03), transparent); background-size: 200% 100%; animation: sh 1.4s linear infinite; }
@@ -891,12 +871,6 @@
             const cards = ranks.map(rank => {
               const card = document.createElement("div");
               card.className = `preview-card ${i.shape} ${i.canvasBackground}`;
-              card.title = "Clicca per ingrandire / rimpicciolire l'anteprima";
-
-              const badge = document.createElement("span");
-              badge.className = "preview-rank";
-              badge.textContent = `#0${rank}`;
-
               const img = document.createElement("img");
               img.loading = "lazy";
               img.decoding = "async";
@@ -920,7 +894,7 @@
               });
 
               updateImg();
-              card.append(badge, img);
+              card.append(img);
               card._updateImg = updateImg;
               return card;
             });
