@@ -540,10 +540,10 @@
             <button class="o on" type="button" data-bulk="shape" data-v="landscape"><i class="g-land"></i>Orizzontale 16:9</button>
             <button class="o" type="button" data-bulk="shape" data-v="poster"><i class="g-port"></i>Verticale 2:3</button></span>
           <span class="grp"><em>SFONDO:</em>
-            <button class="o on" type="button" data-bulk="bg" data-v="transparent"><i class="g-tr"></i>Trasparente</button>
+            <button class="o" type="button" data-bulk="bg" data-v="transparent"><i class="g-tr"></i>Trasparente</button>
             <button class="o" type="button" data-bulk="bg" data-v="black"><i class="g-bk"></i>Nuvio</button>
             <button class="o" type="button" data-bulk="bg" data-v="stremio"><i class="g-stremio"></i>Stremio</button>
-            <button class="o" type="button" data-bulk="bg" data-v="provider"><i class="g-provider"></i>Brand Glass</button></span>
+            <button class="o on" type="button" data-bulk="bg" data-v="provider"><i class="g-provider"></i>Brand Glass</button></span>
           <span class="grp"><em>DETTAGLI:</em>
             <button class="o on" type="button" id="bulkMetaToggle"><i class="g-meta-toggle"></i>Genere &amp; Voto</button>
             <button class="o on" type="button" id="bulkLogoToggle"><i class="g-logo-toggle"></i>Logo Provider</button></span>
@@ -720,12 +720,12 @@
         const name = providerOf(c.name);
         const key = name.toLowerCase();
         if (!map.has(key)) map.set(key, { key, name, items: [] });
-        // Default: tutto spento (checked: false), sfondo trasparente
+        // Default: tutto spento (checked: false), sfondo provider glass
         map.get(key).items.push({ 
           ...c, 
           checked: false, 
           shape: "landscape", 
-          canvasBackground: "transparent",
+          canvasBackground: "provider",
           showMeta: true,
           showLogo: true
         });

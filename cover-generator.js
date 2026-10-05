@@ -864,7 +864,7 @@ export async function createTopCover({
   artworkUrl,
   shape = "landscape",
   accent = "#FFFFFF",
-  canvasBackground = "transparent",
+  canvasBackground = "provider",
   genre = "",
   rating = "",
   catalogId = "",

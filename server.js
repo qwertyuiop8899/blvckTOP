@@ -128,8 +128,8 @@ function normalizeShape(shape) {
 
 export function normalizeCanvasBackground(bg) {
   const s = String(bg || "").toLowerCase().trim();
-  if (s === "provider" || s === "brand") {
-    return "provider";
+  if (s === "transparent") {
+    return "transparent";
   }
   if (s === "stremio" || s === "stremio-navy" || s === "rgb(26,23,62)" || s === "rgb(26, 23, 62)" || s === "#1a173e" || s === "1a173e") {
     return "stremio";
@@ -137,7 +137,7 @@ export function normalizeCanvasBackground(bg) {
   if (s === "black" || s === "nero") {
     return "black";
   }
-  return "transparent";
+  return "provider";
 }
 
 function getCatalogConfig(config, type, id) {
