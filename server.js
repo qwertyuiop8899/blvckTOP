@@ -492,8 +492,24 @@ app.get("/c/:token/catalog/:type/:catalogId.json", async (req, res) => {
           catalog
         );
         const posterShape = normalizeShape(catalog.shape);
+
+        // Sanitize future released dates (common in TV series where easycatalogs sends next episode air date),
+        // preventing Nuvio/Stremio from filtering out unreleased items from the top 10 carousel.
+        let sanitizedReleased = meta.released;
+        if (sanitizedReleased && new Date(sanitizedReleased) > new Date()) {
+          const nowIso = new Date().toISOString();
+          if (meta.year && /^\d{4}/.test(String(meta.year))) {
+            const y = String(meta.year).match(/^\d{4}/)[0];
+            const yearDate = new Date(`${y}-01-01T00:00:00.000Z`);
+            sanitizedReleased = yearDate <= new Date() ? yearDate.toISOString() : nowIso;
+          } else {
+            sanitizedReleased = nowIso;
+          }
+        }
+
         return {
           ...meta,
+          ...(sanitizedReleased ? { released: sanitizedReleased } : {}),
           poster,
           ...(posterShape === "landscape" ? { landscapePoster: poster } : {}),
           posterShape
