@@ -11,11 +11,13 @@ import {
   getTmdbImages,
   chooseBackdrop,
   choosePoster,
+  chooseBannerArtwork,
   DEFAULT_TMDB_KEY
 } from "./tmdb.js";
 import { createTopCover } from "./cover-generator.js";
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+let preloadRunning = false;
 
 function sourceBaseUrl(sourceManifestUrl) {
   return sourceManifestUrl.replace(/\/manifest\.json(?:\?.*)?$/i, "");
@@ -42,6 +44,7 @@ function catalogAccent(catalog = {}) {
 }
 
 export const COVER_VERSION = "v7.5.0";
+export const FRESH_VERSION = "fresh-v5";
 
 export function computeCoverKey({
   rank,
@@ -54,26 +57,35 @@ export function computeCoverKey({
   artworkUrl,
   genre,
   rating,
-  showLogo
+  showLogo,
+  style = "classic",
+  logoUrl = ""
 }) {
-  return [
+  const isBanner = style === "banner" || canvasBackground === "fresh";
+  const parts = [
     COVER_VERSION,
     rank,
     type,
     shape,
     tmdbId || "",
     catalogId || "",
-    canvasBackground || "transparent",
+    // The banner is full-bleed: one file serves every background setting.
+    isBanner ? "full" : (canvasBackground || "transparent"),
     accent || "#FFFFFF",
     artworkUrl || "",
     genre || "",
     rating || "",
     showLogo !== false && showLogo !== "false" ? "1" : "0"
-  ].join("|");
+  ];
+
+  // Suffix only for banners, so the existing classic cache keeps its keys.
+  if (isBanner) parts.push(FRESH_VERSION, logoUrl || "");
+  return parts.join("|");
 }
 
 export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
-  if (!sourceManifestUrl) return;
+  if (!sourceManifestUrl || preloadRunning) return;
+  preloadRunning = true;
 
   const startTime = Date.now();
   console.log(`[Preload] Inizio sincronizzazione e pre-caching Top 10...`);
@@ -81,6 +93,7 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
   let newCoversGenerated = 0;
   let skippedCovers = 0;
   let catalogCount = 0;
+  let synchronizationComplete = true;
   const activeTuples = new Set();
 
   try {
@@ -93,6 +106,7 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
     }
 
     const sourceManifest = await manifestResponse.json();
+    if (!Array.isArray(sourceManifest.catalogs)) throw new Error("Cataloghi sorgente non validi.");
 
     const catalogs = (Array.isArray(sourceManifest.catalogs) ? sourceManifest.catalogs : [])
       .filter(c => {
@@ -116,9 +130,10 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
           headers: { "User-Agent": "blvckTOP/7.3" }
         });
 
-        if (!catRes.ok) continue;
+        if (!catRes.ok) throw new Error(`Catalogo HTTP ${catRes.status}`);
 
         const catData = await catRes.json();
+        if (!Array.isArray(catData.metas)) throw new Error("Titoli del catalogo non validi.");
         setCachedJson(catalogUrl, catData, 30 * 60 * 1000);
 
         const metas = Array.isArray(catData.metas) ? catData.metas : [];
@@ -131,13 +146,44 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
 
           try {
             const tmdbId = await resolveTmdbId(type, meta.id || meta.tmdbId, DEFAULT_TMDB_KEY);
-            if (!tmdbId) continue;
+            if (!tmdbId) {
+              synchronizationComplete = false;
+              continue;
+            }
 
             const normType = type === "series" ? "tv" : type;
             activeTuples.add(`${catId}|${type}|${rank}|${tmdbId}`);
             activeTuples.add(`${catId}|${normType}|${rank}|${tmdbId}`);
 
             const images = await getTmdbImages(type, tmdbId, DEFAULT_TMDB_KEY);
+
+            const renderIfMissing = async (coverKey, params) => {
+              // Se il film/serie è rimasto alla stessa posizione, non lo rifare!
+              if (getCoverFilePath(coverKey)) {
+                skippedCovers++;
+                return;
+              }
+
+              try {
+                const buffer = await createTopCover({
+                  rank,
+                  accent,
+                  genre,
+                  rating,
+                  catalogId: catId,
+                  ...params
+                });
+
+                saveCoverBuffer(coverKey, buffer);
+                newCoversGenerated++;
+
+                // Throttle execution to avoid 100% CPU lockup
+                await sleep(35);
+              } catch (coverErr) {
+                synchronizationComplete = false;
+                console.warn(`[Preload] Errore generazione cover ${meta.name || tmdbId} #${rank}:`, coverErr.message);
+              }
+            };
 
             // Pre-generate standard configurations
             const shapes = ["landscape", "poster"];
@@ -170,49 +216,57 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
                       showLogo
                     });
 
-                    // Se il film/serie è rimasto alla stessa posizione, non lo rifare!
-                    const existing = getCoverFilePath(coverKey);
-                    if (existing) {
-                      skippedCovers++;
-                      continue;
-                    }
-
-                    try {
-                      const pngBuffer = await createTopCover({
-                        rank,
-                        artworkUrl,
-                        shape,
-                        accent,
-                        canvasBackground,
-                        genre: effectiveGenre,
-                        rating: effectiveRating,
-                        catalogId: catId,
-                        showLogo
-                      });
-
-                      saveCoverBuffer(coverKey, pngBuffer);
-                      newCoversGenerated++;
-
-                      // Throttle execution to avoid 100% CPU lockup
-                      await sleep(35);
-                    } catch (coverErr) {
-                      console.warn(`[Preload] Errore generazione cover ${meta.name || tmdbId} #${rank}:`, coverErr.message);
-                    }
+                    await renderIfMissing(coverKey, {
+                      artworkUrl,
+                      shape,
+                      canvasBackground,
+                      genre: effectiveGenre,
+                      rating: effectiveRating,
+                      showLogo
+                    });
                   }
                 }
               }
+
+              const banner = chooseBannerArtwork(images, shape);
+              if (banner.artworkUrl) {
+                const coverKey = computeCoverKey({
+                  rank,
+                  type: normType,
+                  shape,
+                  tmdbId,
+                  catalogId: catId,
+                  accent,
+                  artworkUrl: banner.artworkUrl,
+                  genre,
+                  rating,
+                  showLogo: true,
+                  style: "banner",
+                  logoUrl: banner.logoUrl
+                });
+
+                await renderIfMissing(coverKey, {
+                  ...banner,
+                  style: "banner",
+                  shape,
+                  showLogo: true
+                });
+              }
             }
           } catch (itemErr) {
+            synchronizationComplete = false;
             console.warn(`[Preload] Errore elaborazione item ${meta.id}:`, itemErr.message);
           }
         }
       } catch (catErr) {
+        synchronizationComplete = false;
         console.warn(`[Preload] Errore caricamento catalogo ${catId}:`, catErr.message);
       }
     }
 
     // Cancella i rendering di film/serie che non sono più in classifica!
-    const prunedCount = pruneStaleCovers(activeTuples, COVER_VERSION);
+    const prunedCount = synchronizationComplete ? pruneStaleCovers(activeTuples, COVER_VERSION, FRESH_VERSION) : 0;
+    if (!synchronizationComplete) console.warn("[Preload] Sincronizzazione incompleta: cache conservata, pulizia rimandata.");
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(
@@ -221,22 +275,27 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
     );
   } catch (err) {
     console.error(`[Preload] Errore generale durante il preload:`, err.message);
+  } finally {
+    preloadRunning = false;
   }
 }
 
 export function initScheduler(sourceManifestUrl) {
+  const timezone = process.env.TZ || "Europe/Rome";
   // Esegui alle 09:00 e alle 18:00 ogni giorno
   // Cron syntax: "0 9,18 * * *" (minuto 0, ore 9 e 18, ogni giorno)
   cron.schedule("0 9,18 * * *", () => {
     const now = new Date().toLocaleTimeString();
     console.log(`[CRON] ${now} - Avvio aggiornamento programmato Top 10 (9:00 / 18:00)...`);
     preloadAllCatalogs(sourceManifestUrl);
-  });
+  }, { timezone });
 
-  console.log(`[Scheduler] Attivato aggiornamento automatico giornaliero alle 09:00 e alle 18:00.`);
+  console.log(`[Scheduler] Attivato aggiornamento automatico giornaliero alle 09:00 e alle 18:00 (${timezone}).`);
 
   // Avvia il preload in background dopo 5 secondi dall'avvio
-  setTimeout(() => {
-    preloadAllCatalogs(sourceManifestUrl);
-  }, 5000);
+  if (process.env.PRELOAD_ON_START !== "false") {
+    setTimeout(() => {
+      preloadAllCatalogs(sourceManifestUrl);
+    }, 5000);
+  }
 }

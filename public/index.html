@@ -158,11 +158,15 @@
     .brand:hover img { opacity: .9; }
 
     /* ---------- hero covers carousel ---------- */
-    .covers { display: flex; justify-content: center; gap: 16px; margin: 0 0 72px; }
-    .cv { flex: 0 1 195px; min-width: 0; }
-    .poster { display: block; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background: #111317; border: 1px solid var(--line); transition: transform .35s var(--ease), border-color .35s; }
-    .cv:hover .poster { transform: translateY(-4px); border-color: rgba(255,255,255,.3); }
-    .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .covers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 16px; margin: 0 0 36px; }
+    .cv { margin: 0; min-width: 0; text-align: center; }
+    .cv img { display: block; width: 100%; height: 170px; object-fit: contain; border-radius: 6px; }
+    .cv figcaption { margin-top: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .cv figcaption strong { display: block; margin-bottom: 4px; font-family: var(--font-display); font-size: 14px; font-weight: 600; line-height: 1.3; color: #fff; }
+    @media (max-width: 600px) {
+      .covers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 10px; }
+      .cv img { height: 140px; }
+    }
 
     /* ---------- sezioni ---------- */
     .step { padding: 40px 0; border-top: 1px solid var(--line); }
@@ -209,12 +213,16 @@
     .g-land, .g-port { display: block; border: 1.25px solid currentColor; border-radius: 2px; }
     .g-land { width: 14px; height: 8px; }
     .g-port { width: 8px; height: 14px; }
-    .g-tr, .g-bk, .g-stremio, .g-provider { display: block; width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.4); }
+    .g-classic, .g-banner { display: block; width: 14px; height: 9px; border-radius: 2px; }
+    .g-classic { border: 1.25px solid currentColor; padding: 1.5px; background: linear-gradient(90deg, transparent 40%, currentColor 40%) content-box; }
+    .g-banner { box-shadow: inset 0 0 0 1.25px currentColor; background: linear-gradient(90deg, rgba(255,255,255,.12), currentColor); }
+    .g-tr, .g-bk, .g-stremio, .g-provider, .g-fresh { display: block; width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.4); }
+    .g-fresh { background: linear-gradient(135deg, #c8e1dc, #4e766d 50%, #282b2d); }
     .g-tr { background: conic-gradient(#555a64 25%, #a5aab4 0 50%, #555a64 0 75%, #a5aab4 0) 0 0 / 4px 4px; }
     .g-stremio { background: rgb(26, 23, 62); }
     .g-bk { background: #000; }
     .g-provider { background: linear-gradient(135deg, #e50914, #00a8e1 50%, #00e575 100%); }
-    .o.on .g-tr, .o.on .g-bk, .o.on .g-stremio, .o.on .g-provider { box-shadow: 0 0 0 1.5px var(--accent); }
+    .o.on .g-tr, .o.on .g-bk, .o.on .g-stremio, .o.on .g-provider, .o.on .g-fresh { box-shadow: 0 0 0 1.5px var(--accent); }
     .g-meta-toggle, .g-logo-toggle { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; font-style: normal; }
     .g-meta-toggle::before { content: "★"; color: #FFB800; font-size: 11px; }
     .g-logo-toggle::before { content: "❖"; color: var(--accent); font-size: 12px; }
@@ -307,8 +315,8 @@
       flex: 1; min-width: 0; 
       font-family: var(--font-display);
       font-weight: 600; font-size: 15px; 
-      letter-spacing: -.01em;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+      letter-spacing: 0;
+      white-space: normal; overflow-wrap: anywhere;
       transition: color .2s;
     }
     .row.inactive .row-name { color: var(--muted); }
@@ -339,6 +347,7 @@
       border: 1px solid rgba(255,255,255,.06);
     }
     .cfg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+    .cfg-item .cfg-line { margin-top: 14px; }
     .cfg-line > b { width: 54px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text); font-weight: 700; }
     .cfg-line .sep { width: 1px; height: 14px; background: var(--line); margin: 0 8px; }
 
@@ -429,6 +438,27 @@
     .skeleton { height: 68px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, rgba(255,255,255,.03), transparent); background-size: 200% 100%; animation: sh 1.4s linear infinite; }
     @keyframes sh { to { background-position: -200% 0; } }
 
+    .catalog-order { border-top: 1px solid var(--line); }
+    .order-row {
+      display: grid; grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) 80px;
+      gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line);
+    }
+    .order-source { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+    .order-name {
+      min-width: 0; width: 100%; height: 40px; padding: 0 12px; border-radius: 6px;
+      border: 1px solid var(--line2); background: rgba(0,0,0,.3); color: var(--text);
+      font-family: var(--font-mono); font-size: 13px;
+    }
+    .order-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .order-actions { display: flex; gap: 6px; }
+    .order-button {
+      width: 37px; height: 37px; padding: 0; display: grid; place-items: center;
+      border: 1px solid var(--line2); border-radius: 6px; color: var(--text); background: transparent;
+    }
+    .order-button span { font-size: 20px; line-height: 1; }
+    .order-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .order-button:disabled { opacity: .25; cursor: default; }
+
     /* genera */
     .gen { 
       display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; 
@@ -468,12 +498,14 @@
 
     @media (max-width: 700px) {
       .page { width: calc(100% - 28px); padding-top: 32px; }
-      .covers { gap: 8px; } .cv:nth-child(n+3) { display: none; }
+      .covers { gap: 8px; }
       .row-main { flex-wrap: wrap; } .chips { margin-left: 54px; }
       .cfg-line > b { width: 100%; }
       .search { flex: 1 1 100%; } .counter { margin-left: 0; width: 100%; padding: 0; }
       .url-row { flex-direction: column; } .url-row .ctl { width: 100%; }
       .gen { flex-direction: column; align-items: stretch; } .gen .btn { justify-content: center; }
+      .order-row { grid-template-columns: minmax(0, 1fr) 80px; gap: 8px; }
+      .order-source { grid-column: 1 / -1; }
     }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
@@ -500,7 +532,7 @@
         <img src="https://raw.githubusercontent.com/blvckroby/MusicDB/refs/heads/main/loghi/Top10Badge.svg" alt="BLVCK TOP 10 Badge" class="top10-badge-img" />
       </div>
 
-      <div class="hero-badge"><span class="dot"></span>ENGINE v7.2 // LIVE SYNC 09:00 &amp; 18:00</div>
+      <div class="hero-badge"><span class="dot"></span>ENGINE v7.6.3 // LIVE SYNC 09:00 &amp; 18:00</div>
 
       <p class="lede">Classifiche ufficiali dei tuoi servizi streaming con cover numerate in alta definizione per <b>Nuvio</b> e <b>Stremio</b>.</p>
       <div class="cta">
@@ -514,39 +546,19 @@
     </header>
 
     <div class="band" aria-hidden="true"><div class="track" id="track"></div></div>
-    <div class="covers" id="covers" aria-hidden="true"></div>
+    <div class="covers" id="covers" aria-label="Esempi di copertine">
+      <figure class="cv"><img src="/examples/classic-landscape.png" alt="Copertina Normale orizzontale" decoding="async" /><figcaption><strong>Normale</strong>Orizzontale</figcaption></figure>
+      <figure class="cv"><img src="/examples/classic-poster.png" alt="Copertina Normale verticale" decoding="async" /><figcaption><strong>Normale</strong>Verticale</figcaption></figure>
+      <figure class="cv"><img src="/examples/provider-landscape.png" alt="Copertina Provider Glass orizzontale" decoding="async" /><figcaption><strong>Provider Glass</strong>Orizzontale</figcaption></figure>
+      <figure class="cv"><img src="/examples/provider-poster.png" alt="Copertina Provider Glass verticale" decoding="async" /><figcaption><strong>Provider Glass</strong>Verticale</figcaption></figure>
+      <figure class="cv"><img src="/examples/fresh-landscape.jpg?v=fresh-v5" alt="Copertina Fresh orizzontale" decoding="async" /><figcaption><strong>Fresh</strong>Orizzontale</figcaption></figure>
+      <figure class="cv"><img src="/examples/fresh-poster.jpg?v=fresh-v5" alt="Copertina Fresh verticale" decoding="async" /><figcaption><strong>Fresh</strong>Verticale</figcaption></figure>
+    </div>
 
     <section id="start">
       <div class="step">
         <div class="step-head">
-          <span class="step-n">01 //</span>
-          <div><h2>Scegli le classifiche</h2><p class="sub">Seleziona i servizi streaming desiderati. Clicca su un servizio per visualizzare le anteprime dal vivo.</p></div>
-        </div>
-
-        <div class="toolbar">
-          <input id="search" class="ctl search" type="search" placeholder="Cerca servizio (es. Netflix, Prime...)" aria-label="Cerca servizio" />
-          <div class="ctl seg" role="group" aria-label="Filtro tipo">
-            <button type="button" class="on" data-f="all">TUTTI</button>
-            <button type="button" data-f="movie">FILM</button>
-            <button type="button" data-f="series">SERIE</button>
-          </div>
-          <button class="ctl" id="allBtn" type="button">SELEZIONA TUTTI</button>
-          <button class="ctl" id="noneBtn" type="button">AZZERA</button>
-          <span class="counter"><b id="count">0</b> SELEZIONATI</span>
-        </div>
-
-        <div class="bulk">
-          <span class="grp"><em>FORMATO:</em>
-            <button class="o on" type="button" data-bulk="shape" data-v="landscape"><i class="g-land"></i>Orizzontale 16:9</button>
-            <button class="o" type="button" data-bulk="shape" data-v="poster"><i class="g-port"></i>Verticale 2:3</button></span>
-          <span class="grp"><em>SFONDO:</em>
-            <button class="o" type="button" data-bulk="bg" data-v="transparent"><i class="g-tr"></i>Trasparente</button>
-            <button class="o" type="button" data-bulk="bg" data-v="black"><i class="g-bk"></i>Nuvio</button>
-            <button class="o" type="button" data-bulk="bg" data-v="stremio"><i class="g-stremio"></i>Stremio</button>
-            <button class="o on" type="button" data-bulk="bg" data-v="provider"><i class="g-provider"></i>Brand Glass</button></span>
-          <span class="grp"><em>DETTAGLI:</em>
-            <button class="o on" type="button" id="bulkMetaToggle"><i class="g-meta-toggle"></i>Genere &amp; Voto</button>
-            <button class="o on" type="button" id="bulkLogoToggle"><i class="g-logo-toggle"></i>Logo Provider</button></span>
+          <h2>Scegli le classifiche</h2>
         </div>
 
         <div id="catalogs" class="list">
@@ -554,9 +566,13 @@
         </div>
       </div>
 
+      <div class="step" id="catalogSelection" hidden>
+        <div class="step-head"><h2>Ordine e nomi</h2></div>
+        <div id="catalogOrder" class="catalog-order"></div>
+      </div>
+
       <div class="step">
         <div class="step-head">
-          <span class="step-n">02 //</span>
           <div><h2>Genera e Installa</h2></div>
         </div>
         <div class="gen">
@@ -572,21 +588,15 @@
         <div id="message" class="message"></div>
 
         <div id="result" class="result">
-          <div class="manifest-tabs" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-            <button id="tabStremio" class="ctl on" type="button" style="padding:0 14px; height:32px; font-weight:700;">STREMIO (SFONDO BLEND)</button>
-            <button id="tabNuvio" class="ctl" type="button" style="padding:0 14px; height:32px; font-weight:700;">NUVIO (SFONDO NERO)</button>
-            <button id="tabCustom" class="ctl" type="button" style="padding:0 14px; height:32px; font-weight:700;">COME CONFIGURATO</button>
-          </div>
-          <label id="manifestLabel" for="manifestUrl">MANIFEST ENDPOINT (STREMIO · SFONDO rgb 26, 23, 62)</label>
           <div class="url-row">
-            <input id="manifestUrl" type="text" readonly />
+            <input id="manifestUrl" type="text" aria-label="URL manifest" readonly />
             <button id="copyBtn" class="ctl" type="button">COPIA URL</button>
           </div>
           <div class="install">
             <a id="stremioBtn" href="#"><img data-logo="stremio" alt="" />INSTALLA SU STREMIO</a>
             <a id="nuvioBtn" href="#"><img class="wm" data-logo="nuvio" alt="" />INSTALLA SU NUVIO</a>
           </div>
-          <p class="hint">In Nuvio: <b>Impostazioni → Addon → Aggiungi</b> e incolla l'URL Nuvio se il link diretto non si apre automaticamente.</p>
+          <p class="hint">In Nuvio: <b>Impostazioni → Addon → Aggiungi</b> e incolla l'URL se il link diretto non si apre automaticamente.</p>
         </div>
       </div>
     </section>
@@ -600,8 +610,7 @@
   <script>
     const $ = id => document.getElementById(id);
     const catalogsEl = $("catalogs"), generateBtn = $("generateBtn"),
-          message = $("message"), result = $("result"), manifestUrl = $("manifestUrl"),
-          countEl = $("count");
+          message = $("message"), result = $("result"), manifestUrl = $("manifestUrl");
 
     /* ---------- loghi ---------- */
     const ICON_CDN = "/icons/";
@@ -698,7 +707,9 @@
     });
 
     /* ---------- cataloghi raggruppati per servizio ---------- */
-    let groups = [], typeFilter = "all";
+    let groups = [];
+    let catalogOrder = [];
+    let configRevision = 0;
     const TYPE_LABEL = { movie: "Film", series: "Serie" };
     const typeLabel = t => TYPE_LABEL[t] || t;
 
@@ -720,12 +731,11 @@
         const name = providerOf(c.name);
         const key = name.toLowerCase();
         if (!map.has(key)) map.set(key, { key, name, items: [] });
-        // Default: tutto spento (checked: false), sfondo provider glass
         map.get(key).items.push({ 
           ...c, 
           checked: false, 
           shape: "landscape", 
-          canvasBackground: "provider",
+          canvasBackground: "fresh",
           showMeta: true,
           showLogo: true
         });
@@ -735,28 +745,97 @@
     }
 
     const allItems = () => groups.flatMap(g => g.items);
-    const visibleItems = () => {
-      const q = $("search").value.trim().toLowerCase();
-      return groups.filter(g => g.name.toLowerCase().includes(q))
-        .flatMap(g => g.items).filter(i => typeFilter === "all" || i.type === typeFilter);
-    };
+
+    const itemKey = item => `${item.type}::${item.id}`;
+
+    function orderedCatalogItems() {
+      const selected = new Map(allItems().filter(item => item.checked).map(item => [itemKey(item), item]));
+      catalogOrder = catalogOrder.filter(key => selected.has(key));
+      selected.forEach((_item, key) => { if (!catalogOrder.includes(key)) catalogOrder.push(key); });
+      return catalogOrder.map(key => selected.get(key));
+    }
+
+    function invalidateManifest() {
+      configRevision++;
+      result.classList.remove("show");
+      message.className = "message";
+      message.textContent = "";
+    }
+
+    function renderSelectedCatalogs() {
+      const items = orderedCatalogItems();
+      const list = $("catalogOrder");
+      $("catalogSelection").hidden = !items.length;
+      list.replaceChildren();
+      items.forEach((item, index) => {
+        const key = itemKey(item);
+        const row = document.createElement("div");
+        row.className = "order-row";
+        row.dataset.catalogKey = key;
+        const original = document.createElement("div");
+        original.className = "order-source";
+        original.textContent = `${index + 1}. ${item.name} (${typeLabel(item.type)})`;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "order-name";
+        input.maxLength = 80;
+        input.value = item.customName || "";
+        input.placeholder = item.name;
+        input.setAttribute("aria-label", `Nome catalogo: ${item.name} (${typeLabel(item.type)})`);
+        input.addEventListener("input", () => {
+          item.customName = input.value;
+          invalidateManifest();
+        });
+        const actions = document.createElement("div");
+        actions.className = "order-actions";
+        ["up", "down"].forEach(direction => {
+          const offset = direction === "up" ? -1 : 1;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "order-button";
+          button.dataset.catalogKey = key;
+          button.dataset.direction = direction;
+          button.disabled = index + offset < 0 || index + offset >= items.length;
+          button.title = `${direction === "up" ? "Sposta su" : "Sposta giu"}: ${item.name}`;
+          button.setAttribute("aria-label", button.title);
+          const icon = document.createElement("span");
+          icon.textContent = direction === "up" ? "\u2191" : "\u2193";
+          icon.setAttribute("aria-hidden", "true");
+          button.append(icon);
+          button.addEventListener("click", () => {
+            [catalogOrder[index], catalogOrder[index + offset]] = [catalogOrder[index + offset], catalogOrder[index]];
+            invalidateManifest();
+            renderSelectedCatalogs();
+            const focusButton = [...list.querySelectorAll("button")].find(control =>
+              control.dataset.catalogKey === key && control.dataset.direction === direction && !control.disabled);
+            const movedRow = [...list.children].find(element => element.dataset.catalogKey === key);
+            (focusButton || movedRow.querySelector("input")).focus();
+          });
+          actions.append(button);
+        });
+        row.append(original, input, actions);
+        list.append(row);
+      });
+    }
 
     function setMessage(text, type) { message.textContent = text; message.className = `message ${type}`; }
 
     function updateSummary() {
       const n = allItems().filter(c => c.checked).length;
-      countEl.textContent = n;
       $("genSummary").textContent = n ? `${n} ${n === 1 ? "classifica attiva" : "classifiche attive"}` : "Nessun catalogo selezionato";
       const sub = $("genSub");
       sub.textContent = !n ? "Scegli almeno una classifica per continuare" : "Tutto pronto: genera il tuo manifest";
       sub.classList.toggle("ready", !!n);
+      renderSelectedCatalogs();
     }
 
     function selectedCatalogs() {
-      return allItems().filter(c => c.checked).map(c => ({
+      return orderedCatalogItems().map(c => ({
         id: c.id,
         type: c.type,
+        customName: c.customName || "",
         shape: c.shape,
+        style: c.canvasBackground === "fresh" ? "banner" : "classic",
         canvasBackground: c.canvasBackground,
         showMeta: c.showMeta !== false && c.showMeta !== "false",
         showLogo: c.showLogo !== false && c.showLogo !== "false"
@@ -767,10 +846,14 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = "o" + (item[prop] === value ? " on" : "");
-      b.innerHTML = `<i class="${glyph}"></i>${text}`;
+      b.innerHTML = `<i class="${glyph}" aria-hidden="true"></i>${text}`;
+      b.setAttribute("aria-pressed", item[prop] === value);
       b.addEventListener("click", () => {
         item[prop] = value;
-        scope.querySelectorAll(`[data-p="${prop}"]`).forEach(x => x.classList.toggle("on", x === b));
+        scope.querySelectorAll(`[data-p="${prop}"]`).forEach(x => {
+          x.classList.toggle("on", x === b);
+          x.setAttribute("aria-pressed", x === b);
+        });
         if (typeof onChange === "function") onChange();
       });
       b.dataset.p = prop;
@@ -782,20 +865,20 @@
       b.type = "button";
       const isOn = item[prop] !== false && item[prop] !== "false";
       b.className = "o" + (isOn ? " on" : "");
-      b.innerHTML = `<i class="${glyph}"></i>${text}`;
+      b.innerHTML = `<i class="${glyph}" aria-hidden="true"></i>${text}`;
+      b.setAttribute("aria-pressed", isOn);
       b.addEventListener("click", () => {
         const currentlyOn = item[prop] !== false && item[prop] !== "false";
         item[prop] = !currentlyOn;
         b.classList.toggle("on", item[prop]);
+        b.setAttribute("aria-pressed", item[prop]);
         if (typeof onChange === "function") onChange();
       });
       return b;
     }
 
     function renderCatalogs() {
-      const q = $("search").value.trim().toLowerCase();
-      const list = groups.filter(g => g.name.toLowerCase().includes(q) &&
-        (typeFilter === "all" || g.items.some(i => i.type === typeFilter)));
+      const list = groups;
       catalogsEl.innerHTML = "";
       if (!list.length) {
         catalogsEl.innerHTML = '<p class="sub" style="padding:20px 0; font-family:var(--font-mono)">// Nessun servizio trovato.</p>';
@@ -828,6 +911,7 @@
         const toggleGroup = () => {
           const anyUnchecked = g.items.some(i => !i.checked);
           g.items.forEach(i => { i.checked = anyUnchecked; });
+          invalidateManifest();
           renderCatalogs();
         };
 
@@ -867,7 +951,7 @@
             previewRow.className = "preview-row";
 
             // Mostra anteprima 1, 2, 3
-            const ranks = [1, 2, 3];
+            const ranks = [1, 7, 10];
             const cards = ranks.map(rank => {
               const card = document.createElement("div");
               card.className = `preview-card ${i.shape} ${i.canvasBackground}`;
@@ -881,7 +965,7 @@
                 card.className = `preview-card ${i.shape} ${i.canvasBackground}${isZoomed ? " zoomed" : ""}`;
                 const showMeta = i.showMeta !== false && i.showMeta !== "false";
                 const showLogo = i.showLogo !== false && i.showLogo !== "false";
-                img.src = `/top-cover?catalogId=${encodeURIComponent(i.id)}&type=${encodeURIComponent(i.type)}&shape=${i.shape}&canvasBackground=${i.canvasBackground}&showMeta=${showMeta}&showLogo=${showLogo}&rank=${rank}&v=7.5.0`;
+                img.src = `/top-cover?catalogId=${encodeURIComponent(i.id)}&type=${encodeURIComponent(i.type)}&shape=${i.shape}&style=${i.canvasBackground === "fresh" ? "banner" : "classic"}&canvasBackground=${i.canvasBackground}&showMeta=${showMeta}&showLogo=${showLogo}&rank=${rank}&v=${i.canvasBackground === "fresh" ? "fresh-v5" : "7.5.0"}`;
               };
 
               card.addEventListener("click", (e) => {
@@ -900,6 +984,7 @@
             });
 
             const onConfigChange = () => {
+              invalidateManifest();
               cards.forEach(c => c._updateImg());
             };
 
@@ -908,10 +993,11 @@
               optBtn(i, "shape", "poster", "Verticale 2:3", "g-port", line, onConfigChange));
             const sep = document.createElement("span"); sep.className = "sep";
             line.append(sep,
+              optBtn(i, "canvasBackground", "fresh", "Fresh", "g-fresh", line, onConfigChange),
+              optBtn(i, "canvasBackground", "provider", "Provider Glass", "g-provider", line, onConfigChange),
               optBtn(i, "canvasBackground", "transparent", "Trasparente", "g-tr", line, onConfigChange),
               optBtn(i, "canvasBackground", "black", "Nuvio", "g-bk", line, onConfigChange),
-              optBtn(i, "canvasBackground", "stremio", "Stremio", "g-stremio", line, onConfigChange),
-              optBtn(i, "canvasBackground", "provider", "Brand Glass", "g-provider", line, onConfigChange));
+              optBtn(i, "canvasBackground", "stremio", "Stremio", "g-stremio", line, onConfigChange));
             const sep2 = document.createElement("span"); sep2.className = "sep";
             line.append(sep2,
               toggleBtn(i, "showMeta", "Genere & Voto", "g-meta-toggle", onConfigChange),
@@ -919,7 +1005,7 @@
 
             previewRow.append(...cards);
             previewsWrap.append(previewHeader, previewRow);
-            itemBox.append(line, previewsWrap);
+            itemBox.append(previewsWrap, line);
             cfg.append(itemBox);
           });
 
@@ -935,6 +1021,7 @@
           chip.addEventListener("click", (e) => {
             e.stopPropagation();
             i.checked = !i.checked;
+            invalidateManifest();
             chip.classList.toggle("on", i.checked);
             chip.textContent = `${i.checked ? "✓ " : "+ "}${typeLabel(i.type).toUpperCase()}`;
             chip.setAttribute("aria-pressed", i.checked);
@@ -976,70 +1063,14 @@
       }
     }
 
-    $("search").addEventListener("input", renderCatalogs);
-    document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
-      document.querySelectorAll(".seg button").forEach(x => x.classList.remove("on"));
-      b.classList.add("on");
-      typeFilter = b.dataset.f;
-      renderCatalogs();
-    }));
-    $("allBtn").addEventListener("click", () => { visibleItems().forEach(c => c.checked = true); renderCatalogs(); });
-    $("noneBtn").addEventListener("click", () => { visibleItems().forEach(c => c.checked = false); renderCatalogs(); });
-    document.querySelectorAll("[data-bulk]").forEach(b => b.addEventListener("click", () => {
-      const prop = b.dataset.bulk === "shape" ? "shape" : "canvasBackground";
-      allItems().forEach(c => { c[prop] = b.dataset.v; });
-      document.querySelectorAll(`[data-bulk="${b.dataset.bulk}"]`).forEach(x => x.classList.toggle("on", x === b));
-      renderCatalogs();
-    }));
-
-    let bulkMetaState = true;
-    let bulkLogoState = true;
-    if ($("bulkMetaToggle")) {
-      $("bulkMetaToggle").addEventListener("click", () => {
-        bulkMetaState = !bulkMetaState;
-        $("bulkMetaToggle").classList.toggle("on", bulkMetaState);
-        allItems().forEach(c => { c.showMeta = bulkMetaState; });
-        renderCatalogs();
-      });
-    }
-    if ($("bulkLogoToggle")) {
-      $("bulkLogoToggle").addEventListener("click", () => {
-        bulkLogoState = !bulkLogoState;
-        $("bulkLogoToggle").classList.toggle("on", bulkLogoState);
-        allItems().forEach(c => { c.showLogo = bulkLogoState; });
-        renderCatalogs();
-      });
-    }
-
     /* ---------- genera ---------- */
-    let currentManifests = { stremio: "", nuvio: "", custom: "" };
-
-    function selectManifestTab(tab) {
-      ["tabStremio", "tabNuvio", "tabCustom"].forEach(id => {
-        if ($(id)) $(id).classList.toggle("on", id === tab);
-      });
-      if (tab === "tabStremio") {
-        $("manifestLabel").textContent = "MANIFEST ENDPOINT (STREMIO · SFONDO rgb 26, 23, 62)";
-        manifestUrl.value = currentManifests.stremio || currentManifests.custom;
-      } else if (tab === "tabNuvio") {
-        $("manifestLabel").textContent = "MANIFEST ENDPOINT (NUVIO · SFONDO NERO PURO)";
-        manifestUrl.value = currentManifests.nuvio || currentManifests.custom;
-      } else {
-        $("manifestLabel").textContent = "MANIFEST ENDPOINT (CONFIGURAZIONE PERSONALIZZATA)";
-        manifestUrl.value = currentManifests.custom;
-      }
-    }
-
-    if ($("tabStremio")) $("tabStremio").addEventListener("click", () => selectManifestTab("tabStremio"));
-    if ($("tabNuvio")) $("tabNuvio").addEventListener("click", () => selectManifestTab("tabNuvio"));
-    if ($("tabCustom")) $("tabCustom").addEventListener("click", () => selectManifestTab("tabCustom"));
-
     generateBtn.addEventListener("click", async () => {
       const catalogs = selectedCatalogs();
       result.classList.remove("show");
 
       if (!catalogs.length) return setMessage("Seleziona almeno una classifica.", "bad");
 
+      const requestedRevision = configRevision;
       generateBtn.disabled = true;
       generateBtn.querySelector(".label").textContent = "GENERAZIONE IN CORSO…";
       try {
@@ -1050,17 +1081,18 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Errore generazione");
+        if (requestedRevision !== configRevision) return setMessage("Configurazione modificata: genera di nuovo il manifest.", "bad");
 
-        currentManifests = {
+        const currentManifests = {
           stremio: data.stremioManifestUrl || data.manifestUrl,
           nuvio: data.nuvioManifestUrl || data.manifestUrl,
           custom: data.manifestUrl
         };
 
-        selectManifestTab("tabStremio");
+        manifestUrl.value = currentManifests.custom;
 
         $("stremioBtn").href = "stremio://" + currentManifests.stremio.replace(/^https?:\/\//, "");
-        $("nuvioBtn").href = "nuvio://addon?url=" + encodeURIComponent(currentManifests.nuvio);
+        $("nuvioBtn").href = "nuvio://" + currentManifests.nuvio.replace(/^https?:\/\//, "");
         result.classList.add("show");
         result.scrollIntoView({ behavior: "smooth", block: "center" });
         setMessage(`// MANIFEST GENERATO: ${data.catalogCount} CATALOGHI CONFIGURATI`, "ok");
@@ -1088,15 +1120,6 @@
         return `<span class="brand"><img src="${url}" alt="" referrerpolicy="no-referrer" onerror="this.parentNode.remove()" /></span>`;
       }).join("");
       $("track").innerHTML = row + row;
-    })();
-
-    /* ---------- cover di esempio in hero ---------- */
-    (function () {
-      const base = "/top-cover";
-      const ids = [1423191, 1377237, 1283515, 977942];
-      $("covers").innerHTML = ids.map((id, i) =>
-        `<div class="cv"><span class="poster"><img src="${base}?rank=${i + 1}&type=movie&tmdbId=${id}&v=7.5.0" alt="" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()" /></span></div>`
-      ).join("");
     })();
 
     /* ---------- dismiss zoom on outside click ---------- */

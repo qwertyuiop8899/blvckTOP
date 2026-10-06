@@ -17,6 +17,7 @@ COPY . .
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
+ENV MALLOC_ARENA_MAX=2
 
 RUN mkdir -p /app/data
 

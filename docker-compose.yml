@@ -21,6 +21,7 @@ services:
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - DATA_DIR=/app/data
       - NODE_ENV=production
+      - TZ=${TZ:-Europe/Rome}
     volumes:
       - ./data:/app/data
       - ./public:/app/public

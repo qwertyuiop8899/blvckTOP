@@ -1,4 +1,4 @@
-# blvckTOP v7.3 (SQLite & ARM Edition)
+# blvckTOP v7.6.3 (SQLite & ARM Edition)
 
 Addon ad alte prestazioni per Nuvio e Stremio con Top 10 numerate, rendering grafico HD e persistenza su SQLite.
 
@@ -18,7 +18,13 @@ Addon ad alte prestazioni per Nuvio e Stremio con Top 10 numerate, rendering gra
 Ogni utente può scegliere per ciascun catalogo:
 * **Landscape:** Cover $1280 \times 720$, backdrop TMDB `w1280`, logo ufficiale e numero a sinistra con glow.
 * **Portrait:** Cover $1000 \times 1500$, poster verticale TMDB `w780`, logo ufficiale e numero a sinistra.
-* **Sfondo Canvas:** Trasparente o Nero (`#000000`).
+* **Sfondo Canvas:** Fresh (predefinito), Brand Glass, Trasparente, Nuvio e Stremio.
+* **Fresh (predefinito):** immagine nitida a tutto schermo, numero in vetro scuro e logo del titolo in basso a destra. Genere, voto e logo provider restano opzionali. Disponibile in orizzontale e verticale, in JPEG.
+* **Cache:** alle 09:00 e alle 18:00, ora italiana, le cover invariate vengono riutilizzate; le nuove posizioni vengono renderizzate. La pulizia dei titoli usciti dalla Top 10 avviene solo dopo una sincronizzazione completa. Le sei immagini di esempio del configuratore sono statiche.
+* **Ordine cataloghi:** dopo la selezione, le frecce su/giu permettono di ordinare le classifiche anche tra provider diversi.
+* **Nomi cataloghi:** ogni classifica puo avere un nome personalizzato di massimo 80 caratteri. Il campo vuoto mantiene il nome originale; ID, loghi provider e cover non cambiano.
+
+Ordine e nomi vengono salvati nei nuovi link personalizzati. Per cambiarli dopo l'installazione occorre generare e installare un nuovo link; quello precedente resta invariato. Le configurazioni gia esistenti conservano ordine e nomi precedenti. Il manifest restituisce l'ordine scelto, ma l'app client puo applicare un proprio ordinamento.
 
 ---
 

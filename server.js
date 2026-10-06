@@ -25,6 +25,7 @@ import {
   getTmdbDetails,
   chooseBackdrop,
   choosePoster,
+  chooseBannerArtwork,
   resolveTmdbId,
   DEFAULT_TMDB_KEY
 } from "./tmdb.js";
@@ -37,8 +38,8 @@ import {
   getDbStats
 } from "./db.js";
 
-import { createTopCover } from "./cover-generator.js";
-import { initScheduler, computeCoverKey } from "./preload.js";
+import { createTopCover, normalizeStyle } from "./cover-generator.js";
+import { initScheduler, computeCoverKey, FRESH_VERSION } from "./preload.js";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -75,6 +76,9 @@ app.use(express.static(path.join(__dirname, "public"), {
 
 const pendingCovers = new Map();
 const JSON_TTL = 15 * 60 * 1000; // 15 minuti cache per i JSON
+
+const coverMime = buffer =>
+  buffer[0] === 0xff && buffer[1] === 0xd8 ? "image/jpeg" : "image/png";
 
 function sourceBaseUrl() {
   return SOURCE_MANIFEST_URL.replace(/\/manifest\.json(?:\?.*)?$/i, "");
@@ -120,6 +124,14 @@ function selectedCatalogSet(config) {
   );
 }
 
+function normalizeCatalogName(value) {
+  if (value === undefined) return "";
+  if (typeof value !== "string" || value.trim().length > 80 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) {
+    throw Object.assign(new Error("Nome catalogo non valido: massimo 80 caratteri, senza caratteri di controllo."), { statusCode: 400 });
+  }
+  return value.trim();
+}
+
 function normalizeShape(shape) {
   return shape === "poster" || shape === "portrait"
     ? "poster"
@@ -128,6 +140,7 @@ function normalizeShape(shape) {
 
 export function normalizeCanvasBackground(bg) {
   const s = String(bg || "").toLowerCase().trim();
+  if (s === "fresh") return "fresh";
   if (s === "transparent") {
     return "transparent";
   }
@@ -176,6 +189,7 @@ async function buildCoverUrl(
 ) {
   const shape = normalizeShape(catalog.shape);
   const canvasBackground = normalizeCanvasBackground(catalog.canvasBackground);
+  const style = canvasBackground === "fresh" ? "banner" : normalizeStyle(catalog.style);
   const showMeta = catalog.showMeta !== false && catalog.showMeta !== "false";
   const showLogo = catalog.showLogo !== false && catalog.showLogo !== "false";
   const genre = showMeta ? (Array.isArray(meta?.genres) && meta.genres.length > 0 ? meta.genres[0] : (meta?.genre || "")) : "";
@@ -200,8 +214,9 @@ async function buildCoverUrl(
         showLogo: String(showLogo),
         genre: genre || "",
         rating: rating || "",
-        v: "7.5.0"
+        v: style === "banner" ? FRESH_VERSION : "7.5.0"
       });
+      if (style === "banner") qs.set("style", style);
 
       return `${publicBase(req)}/c/${token}/top-cover?${qs}`;
     }
@@ -225,8 +240,9 @@ async function buildCoverUrl(
     showLogo: String(showLogo),
     genre: genre || "",
     rating: rating || "",
-    v: "7.5.0"
+    v: style === "banner" ? FRESH_VERSION : "7.5.0"
   });
+  if (style === "banner") qs.set("style", style);
 
   return `${publicBase(req)}/c/${token}/top-cover?${qs}`;
 }
@@ -282,20 +298,28 @@ app.post("/api/generate", async (req, res) => {
       ])
     );
 
+    const seen = new Set();
     const catalogs = requested
       .map(requestedCatalog => {
         const sourceCatalog = available.get(
-          catalogKey(requestedCatalog.type, requestedCatalog.id)
+          catalogKey(requestedCatalog?.type, requestedCatalog?.id)
         );
 
         if (!sourceCatalog) return null;
+        const key = catalogKey(sourceCatalog.type, sourceCatalog.id);
+        if (seen.has(key)) return null;
+        seen.add(key);
+        const customName = normalizeCatalogName(requestedCatalog.customName);
 
         return {
           id: sourceCatalog.id,
           type: sourceCatalog.type,
           name: sourceCatalog.name || sourceCatalog.id,
+          ...(customName ? { customName } : {}),
           shape: normalizeShape(requestedCatalog.shape),
-          canvasBackground: normalizeCanvasBackground(requestedCatalog.canvasBackground),
+          style: requestedCatalog.canvasBackground === "fresh" || requestedCatalog.canvasBackground === undefined
+            ? "banner" : normalizeStyle(requestedCatalog.style),
+          canvasBackground: normalizeCanvasBackground(requestedCatalog.canvasBackground ?? "fresh"),
           showMeta: requestedCatalog.showMeta !== false && requestedCatalog.showMeta !== "false",
           showLogo: requestedCatalog.showLogo !== false && requestedCatalog.showLogo !== "false"
         };
@@ -309,7 +333,7 @@ app.post("/api/generate", async (req, res) => {
     }
 
     const token = encryptConfig({
-      v: 3,
+      v: 4,
       catalogs
     });
 
@@ -318,14 +342,14 @@ app.post("/api/generate", async (req, res) => {
       ...c,
       canvasBackground: c.canvasBackground === "black" || c.canvasBackground === "stremio" ? "stremio" : c.canvasBackground
     }));
-    const tokenStremio = encryptConfig({ v: 3, catalogs: stremioCatalogs });
+    const tokenStremio = encryptConfig({ v: 4, catalogs: stremioCatalogs });
 
     // Tailored for Nuvio (solid backgrounds -> "black" #000000)
     const nuvioCatalogs = catalogs.map(c => ({
       ...c,
       canvasBackground: c.canvasBackground === "black" || c.canvasBackground === "stremio" ? "black" : c.canvasBackground
     }));
-    const tokenNuvio = encryptConfig({ v: 3, catalogs: nuvioCatalogs });
+    const tokenNuvio = encryptConfig({ v: 4, catalogs: nuvioCatalogs });
 
     const base = publicBase(req);
     const manifestUrl = `${base}/c/${token}/manifest.json`;
@@ -341,8 +365,8 @@ app.post("/api/generate", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      error: "Impossibile generare il manifest."
+    res.status(err.statusCode === 400 ? 400 : 500).json({
+      error: err.statusCode === 400 ? err.message : "Impossibile generare il manifest."
     });
   }
 });
@@ -365,7 +389,7 @@ app.get("/manifest.json", async (_req, res) => {
 
     const manifest = {
       id: "com.blvcktop.default",
-      version: "7.2.0",
+      version: "7.6.3",
       name: "blvckTOP",
       description: "Classifiche Top 10 con cover numerate HD per Nuvio & Stremio",
       logo: "https://raw.githubusercontent.com/blvckroby/MusicDB/refs/heads/main/loghi/Top10Badge.svg",
@@ -394,14 +418,17 @@ app.get("/c/:token/manifest.json", async (req, res) => {
     const source = await fetchJson(SOURCE_MANIFEST_URL);
     const selected = selectedCatalogSet(config);
 
-    const catalogs = (source.catalogs || [])
-      .filter(c => selected.has(catalogKey(c.type, c.id)))
+    const available = new Map((source.catalogs || []).map(c => [catalogKey(c.type, c.id), c]));
+    const ordered = config.v >= 4
+      ? config.catalogs.map(c => available.get(catalogKey(c.type, c.id))).filter(Boolean)
+      : (source.catalogs || []).filter(c => selected.has(catalogKey(c.type, c.id)));
+    const catalogs = ordered
       .map(c => {
         const conf = getCatalogConfig(config, c.type, c.id);
 
         return {
           ...c,
-          name: c.name || conf?.name || c.id
+          name: (config.v >= 4 && conf?.customName) || c.name || conf?.name || c.id
         };
       });
 
@@ -409,7 +436,7 @@ app.get("/c/:token/manifest.json", async (req, res) => {
 
     const manifest = {
       id: `com.blvcktop.${idSuffix}`,
-      version: "7.2.0",
+      version: "7.6.3",
       name: "blvckTOP",
       description: "Classifiche Top 10 con cover numerate HD per Nuvio & Stremio",
       logo: "https://raw.githubusercontent.com/blvckroby/MusicDB/refs/heads/main/loghi/Top10Badge.svg",
@@ -452,24 +479,26 @@ app.get("/c/:token/catalog/:type/:catalogId.json", async (req, res) => {
       `${encodeURIComponent(catalogId)}.json${query}`;
 
     const data = await fetchJson(sourceUrl);
-    const metas = Array.isArray(data.metas) ? data.metas : [];
+    const metas = Array.isArray(data.metas) ? data.metas.slice(0, 10) : [];
 
     const decorated = await Promise.all(
-      metas.map(async (meta, index) => ({
-        ...meta,
-        poster: await buildCoverUrl(
+      metas.map(async (meta, index) => {
+        const poster = await buildCoverUrl(
           req,
           req.params.token,
           meta,
           index + 1,
           type,
           catalog
-        ),
-        posterShape:
-          normalizeShape(catalog.shape) === "poster"
-            ? "poster"
-            : "landscape"
-      }))
+        );
+        const posterShape = normalizeShape(catalog.shape);
+        return {
+          ...meta,
+          poster,
+          ...(posterShape === "landscape" ? { landscapePoster: poster } : {}),
+          posterShape
+        };
+      })
     );
 
     res.setHeader("Cache-Control", "public, max-age=300");
@@ -514,21 +543,21 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
       } catch {}
     }
 
-    const rank = Math.max(
-      1,
-      Math.min(99, Number(req.query.rank || 1))
-    );
+    const requestedRank = Number(req.query.rank || 1);
+    const rank = Number.isFinite(requestedRank) ? Math.max(1, Math.min(10, Math.trunc(requestedRank))) : 1;
 
     const type = String(req.query.type || "movie");
     const shape = normalizeShape(String(req.query.shape || "landscape"));
     const tmdbId = req.query.tmdbId ? String(req.query.tmdbId) : null;
     const catalogId = req.query.catalogId ? String(req.query.catalogId) : "";
 
-    const canvasBackground = normalizeCanvasBackground(req.query.canvasBackground);
+    const catalog = config?.catalogs?.find(c => c.id === catalogId) || { id: catalogId };
+    const canvasBackground = normalizeCanvasBackground(req.query.canvasBackground ?? catalog.canvasBackground);
 
     const showMetaParam = req.query.showMeta;
     const showLogoParam = req.query.showLogo;
-    const catalog = config?.catalogs?.find(c => c.id === catalogId) || { id: catalogId };
+    const style = canvasBackground === "fresh" ? "banner"
+      : normalizeStyle(req.query.style !== undefined ? String(req.query.style) : catalog.style);
     const showMeta = showMetaParam !== undefined
       ? (showMetaParam !== "false" && showMetaParam !== "0" && showMetaParam !== false)
       : (catalog.showMeta !== false && catalog.showMeta !== "false");
@@ -537,6 +566,7 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
       : (catalog.showLogo !== false && catalog.showLogo !== "false");
 
     let artworkUrl = req.query.artwork ? String(req.query.artwork) : null;
+    let logoUrl = "";
     let resolvedTmdbId = tmdbId;
     let genre = showMeta && req.query.genre ? String(req.query.genre) : "";
     let rating = showMeta && req.query.rating ? String(req.query.rating) : "";
@@ -584,9 +614,13 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
     if (resolvedTmdbId && !artworkUrl) {
       try {
         const images = await getTmdbImages(effectiveType, resolvedTmdbId, DEFAULT_TMDB_KEY);
-        artworkUrl = shape === "poster"
-          ? choosePoster(images)
-          : chooseBackdrop(images);
+        if (style === "banner") {
+          ({ artworkUrl, logoUrl } = chooseBannerArtwork(images, shape));
+        } else {
+          artworkUrl = shape === "poster"
+            ? choosePoster(images)
+            : chooseBackdrop(images);
+        }
       } catch (tmdbErr) {
         console.warn(`Errore fetch immagini TMDB ${resolvedTmdbId}:`, tmdbErr.message);
       }
@@ -607,7 +641,9 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
       artworkUrl,
       genre,
       rating,
-      showLogo
+      showLogo,
+      style,
+      logoUrl
     });
 
     // 1. Check persistent disk cache (instant response via sendFile)
@@ -621,7 +657,7 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
     // 2. Check pending in-flight generation
     if (pendingCovers.has(coverKey)) {
       const png = await pendingCovers.get(coverKey);
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", coverMime(png));
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.setHeader("X-Cover-Cache", "SHARED");
       return res.send(png);
@@ -632,6 +668,8 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
       const png = await createTopCover({
         rank,
         artworkUrl,
+        logoUrl,
+        style,
         shape,
         accent,
         canvasBackground,
@@ -650,7 +688,7 @@ app.get(["/c/:token/top-cover", "/top-cover"], async (req, res) => {
 
     try {
       const png = await generationPromise;
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", coverMime(png));
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.setHeader("X-Cover-Cache", "GENERATED");
       res.send(png);

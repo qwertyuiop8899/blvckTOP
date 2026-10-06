@@ -198,7 +198,8 @@ export function getCoverBuffer(coverKey) {
 }
 
 export function saveCoverBuffer(coverKey, buffer) {
-  const filename = `${hashString(coverKey)}.png`;
+  const ext = buffer[0] === 0xff && buffer[1] === 0xd8 ? ".jpg" : ".png";
+  const filename = `${hashString(coverKey)}${ext}`;
   const filePath = path.join(COVERS_DIR, filename);
 
   fs.writeFileSync(filePath, buffer);
@@ -232,7 +233,7 @@ export function cleanExpiredCache() {
   stmts.cleanJsonCache.run(Date.now());
 }
 
-export function pruneStaleCovers(activeTuples, currentVersion = "v7.5.0") {
+export function pruneStaleCovers(activeTuples, currentVersion = "v7.5.0", freshVersion = "fresh-v5") {
   if (!activeTuples || !(activeTuples instanceof Set)) {
     return 0;
   }
@@ -251,7 +252,8 @@ export function pruneStaleCovers(activeTuples, currentVersion = "v7.5.0") {
     const [version, rank, type, _shape, tmdbId, catalogId] = parts;
 
     // 1. Purge older versions
-    if (version !== currentVersion) {
+    if (version !== currentVersion || Number(rank) > 10 || parts[12] === "banner"
+      || (parts[6] === "full" && parts[12] !== freshVersion)) {
       toDelete.push(row);
       continue;
     }

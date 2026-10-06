@@ -859,9 +859,683 @@ export function parseBackgroundColor(canvasBackground) {
   return { r: 0, g: 0, b: 0, alpha: 0 };
 }
 
+/* ---------------- Banner style: full-bleed artwork, glass rank on the left ---------------- */
+
+const BANNER_FONT = "Inter Display, Inter, Arial, sans-serif";
+
+const BANNER_LAYOUTS = {
+  landscape: {
+    width: 1280,
+    height: 720,
+    zone: 0.30,
+    backdrop: { zoom: 1.03, shiftX: 0.06, blur: 14 },
+    number: { padX: 30, padY: 68, gap: 26, maxHeight: 0.54, rim: 2.8 },
+    meta: { genre: 25, rating: 46, gap: 14 },
+    provider: { maxWidth: 236, maxHeight: 64 },
+    logo: { maxWidth: 440, maxHeight: 170, area: 52000, right: 46, bottom: 40 }
+  },
+  poster: {
+    width: 1000,
+    height: 1500,
+    zone: 0.33,
+    backdrop: { zoom: 1.03, shiftX: 0.06, blur: 12 },
+    number: { padX: 22, padY: 280, gap: 34, maxHeight: 0.33, rim: 3.5 },
+    meta: { genre: 30, rating: 54, gap: 16 },
+    provider: { maxWidth: 280, maxHeight: 78 },
+    logo: { maxWidth: 560, maxHeight: 260, area: 90000, right: 50, bottom: 64 }
+  }
+};
+
+// Intermediate buffers only: skip zlib work.
+const FAST_PNG = { compressionLevel: 0, adaptiveFiltering: false };
+
+export function normalizeStyle(style) {
+  return style === "banner" ? "banner" : "classic";
+}
+
+const GLYPH_CACHE = new Map();
+
+// Tight box of the rendered digits at font-size 1000, relative to anchor x / baseline y.
+async function measureGlyphs(text, letterSpacing) {
+  const key = `${text}|${letterSpacing}`;
+  if (GLYPH_CACHE.has(key)) return GLYPH_CACHE.get(key);
+
+  const x = 200;
+  const y = 1200;
+  const svg = Buffer.from(`
+    <svg width="${400 + 800 * text.length}" height="1500" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#000"/>
+      <text x="${x}" y="${y}" font-family="${BANNER_FONT}" font-size="1000" font-weight="800" letter-spacing="${letterSpacing * 1000}" fill="#fff">${text}</text>
+    </svg>
+  `);
+
+  const { info } = await sharp(svg).trim({ threshold: 40 }).toBuffer({ resolveWithObject: true });
+  const box = {
+    left: -info.trimOffsetLeft - x,
+    top: -info.trimOffsetTop - y,
+    width: info.width,
+    height: info.height
+  };
+
+  GLYPH_CACHE.set(key, box);
+  return box;
+}
+
+function starPath(cx, cy, outer, inner) {
+  const points = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    points.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
+  }
+  return `M${points.join("L")}Z`;
+}
+
+async function bannerBackdrop(artworkBuffer, L, zoneW) {
+  const { width: W, height: H } = L;
+  const scaledW = Math.round(W * L.backdrop.zoom);
+  const scaledH = Math.round(H * L.backdrop.zoom);
+  const offsetX = Math.round(W * L.backdrop.shiftX) - Math.floor((scaledW - W) / 2);
+  const fillW = Math.max(0, offsetX);
+  const scaled = await sharp(artworkBuffer)
+    .resize(scaledW, scaledH, { fit: "cover", position: sharp.strategy.attention })
+    .removeAlpha()
+    .png(FAST_PNG)
+    .toBuffer();
+  const cropped = await sharp(scaled)
+    .extract({ left: Math.max(0, -offsetX), top: Math.floor((scaledH - H) / 2), width: W - fillW, height: H })
+    .toColourspace("srgb")
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+  const stripWidth = Math.max(1, Math.round(W * 0.02));
+  const stripLeft = Math.max(0, Math.min(W - fillW - stripWidth, Math.round(zoneW * 0.70) - fillW));
+  const edge = await sharp(cropped, { raw: { width: W - fillW, height: H, channels: 3 } })
+    .extract({ left: stripLeft, top: 0, width: stripWidth, height: H })
+    .resize(1, H)
+    .blur(H * 0.075)
+    .raw()
+    .toBuffer();
+  const pixels = Buffer.alloc(W * H * 3);
+  const fadeStart = Math.max(fillW, zoneW * 0.55);
+  const fadeEnd = zoneW * 0.9;
+  for (let row = 0; row < H; row++) {
+    for (let column = 0; column < W; column++) {
+      const fraction = Math.max(0, Math.min(1, (column - fadeStart) / (fadeEnd - fadeStart)));
+      const blend = 1 - fraction * fraction * (3 - 2 * fraction);
+      const original = (row * (W - fillW) + Math.max(0, column - fillW)) * 3;
+      const destination = (row * W + column) * 3;
+      for (let channel = 0; channel < 3; channel++) {
+        pixels[destination + channel] = Math.round(edge[row * 3 + channel] * blend + cropped[original + channel] * (1 - blend));
+      }
+    }
+  }
+  const blended = await sharp(pixels, { raw: { width: W, height: H, channels: 3 } })
+    .png(FAST_PNG)
+    .toBuffer();
+  const blurMask = Buffer.from(`
+    <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="soft" gradientUnits="userSpaceOnUse" x1="${fadeStart}" y1="0" x2="${zoneW * 1.1}" y2="0">
+          <stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/>
+          <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <rect width="${W}" height="${H}" fill="url(#soft)"/>
+    </svg>
+  `);
+  const softened = await sharp(blended)
+    .blur(L.backdrop.blur)
+    .ensureAlpha()
+    .composite([{ input: blurMask, blend: "dest-in" }])
+    .png(FAST_PNG)
+    .toBuffer();
+  const { channels } = await sharp(blended).extract({ left: 0, top: 0, width: zoneW, height: H }).stats();
+  const brightness = 0.2126 * channels[0].mean + 0.7152 * channels[1].mean + 0.0722 * channels[2].mean;
+  const sideOpacity = Math.min(0.65, Math.max(0.28, (brightness - 60) / 200));
+  const shade = Buffer.from(`
+    <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="side" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${zoneW * 1.5}" y2="0">
+          <stop offset="0" stop-color="#000" stop-opacity="${sideOpacity.toFixed(2)}"/>
+          <stop offset=".5" stop-color="#000" stop-opacity="${(sideOpacity * 0.7).toFixed(2)}"/>
+          <stop offset="1" stop-color="#000" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1">
+          <stop offset=".5" stop-color="#000" stop-opacity="0"/>
+          <stop offset="1" stop-color="#000" stop-opacity=".5"/>
+        </linearGradient>
+      </defs>
+      <rect width="${W}" height="${H}" fill="url(#side)"/>
+      <rect width="${W}" height="${H}" fill="url(#bottom)"/>
+    </svg>
+  `);
+
+  return sharp(blended)
+    .composite([
+      { input: softened, left: 0, top: 0 },
+      { input: shade, left: 0, top: 0 }
+    ])
+    .png(FAST_PNG)
+    .toBuffer();
+}
+
+function bannerMetaLayout(L, zoneW, { genre, rating, provider }) {
+  const { meta } = L;
+  const maxW = zoneW - L.number.padX * 2;
+  const rows = [];
+
+  if (genre) {
+    let size = meta.genre;
+    while (size > 14 && genre.length * size * 0.84 > maxW) size--;
+    const capH = size * 0.73;
+    rows.push({
+      h: capH,
+      draw: (top, cx) => `<text x="${cx.toFixed(1)}" y="${(top + capH).toFixed(1)}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="${size}" font-weight="700" letter-spacing="${(size * 0.12).toFixed(1)}" fill="#FFFFFF" fill-opacity=".88">${escapeXml(genre)}</text>`
+    });
+  }
+
+  if (rating) {
+    const size = meta.rating;
+    const capH = size * 0.73;
+    const starR = size * 0.42;
+    const gap = size * 0.2;
+    const textW = [...rating].reduce((w, ch) => w + (ch === "." ? 0.3 : 0.63), 0) * size;
+    const h = Math.max(capH, starR * 2);
+    rows.push({
+      h,
+      draw: (top, cx) => {
+        const x0 = cx - (starR * 2 + gap + textW) / 2;
+        const midY = top + h / 2;
+        return `<path d="${starPath(x0 + starR, midY, starR, starR * 0.46)}" fill="#C9C7FF"/>` +
+          `<text x="${(x0 + starR * 2 + gap).toFixed(1)}" y="${(midY + capH / 2).toFixed(1)}" font-family="Inter, Arial, sans-serif" font-size="${size}" font-weight="800" fill="#FFFFFF">${rating}</text>`;
+      }
+    });
+  }
+
+  if (provider?.svg) {
+    const scale = Math.min(L.provider.maxWidth / provider.width, L.provider.maxHeight / provider.height);
+    const w = Math.round(provider.width * scale);
+    const h = Math.round(provider.height * scale);
+    const href = `data:image/svg+xml;base64,${Buffer.from(provider.svg).toString("base64")}`;
+    rows.push({
+      h,
+      gapBefore: meta.gap * 1.8,
+      draw: (top, cx) => `<image href="${href}" x="${Math.round(cx - w / 2)}" y="${Math.round(top)}" width="${w}" height="${h}"/>`
+    });
+  }
+
+  const height = rows.reduce((sum, r, i) => sum + r.h + (i ? (r.gapBefore || meta.gap) : 0), 0);
+
+  return {
+    height,
+    render(top, cx) {
+      let y = top;
+      const body = rows.map((r, i) => {
+        if (i) y += r.gapBefore || meta.gap;
+        const out = r.draw(y, cx);
+        y += r.h;
+        return out;
+      }).join("");
+
+      return Buffer.from(`
+        <svg width="${L.width}" height="${L.height}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="metaShadow" x="-20%" y="-40%" width="140%" height="180%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity=".8"/>
+            </filter>
+          </defs>
+          <g filter="url(#metaShadow)">${body}</g>
+        </svg>
+      `);
+    }
+  };
+}
+
+async function bannerNumberGeometry(rank, L, zoneW, { hasProvider = true, hasMeta = true } = {}) {
+  const text = String(rank);
+  const isDouble = text.length > 1;
+  const spacing = isDouble ? -0.05 : 0;
+  const m = await measureGlyphs(text, spacing);
+
+  const { padX, padY, gap, maxHeight } = L.number;
+  const H = L.height;
+  const boxW = zoneW - padX * 2;
+  const numberOnly = !hasProvider && !hasMeta;
+  const glyphH = H * maxHeight * (numberOnly ? 1.08 : 1);
+  const s = glyphH / m.height;
+  const scaleX = Math.min(1, boxW / (m.width * s));
+
+  const glyphW = m.width * scaleX * s;
+  const glyphLeft = padX + (boxW - glyphW) / 2;
+  const glyphTop = numberOnly
+    ? Math.round((H - glyphH) / 2)
+    : padY + (hasProvider ? 0 : Math.round(H * 0.035));
+
+  const geometry = {
+    text,
+    scaleX,
+    fontSize: 1000 * s,
+    letterSpacing: spacing * 1000 * s,
+    x: glyphLeft - m.left * scaleX * s,
+    y: glyphTop - m.top * s,
+    centerX: zoneW / 2,
+    metaTop: glyphTop + glyphH + gap
+  };
+  if (isDouble) {
+    const digits = await Promise.all([...text].map(digit => measureGlyphs(digit, 0)));
+    const digitGap = 20;
+    const available = zoneW - padX;
+    const horizontal = Math.min(1, (available - digitGap) / (digits.reduce((sum, digit) => sum + digit.width, 0) * s));
+    const total = digits.reduce((sum, digit) => sum + digit.width, 0) * s * horizontal + digitGap;
+    const left = (zoneW - total) / 2;
+    geometry.runs = digits.map((digit, index) => ({
+      text: text[index],
+      x: left + (index ? digits[0].width * s * horizontal + digitGap : 0) - digit.left * s * horizontal,
+      scaleX: horizontal
+    }));
+    geometry.letterSpacing = 0;
+  }
+  return geometry;
+}
+
+function bannerNumberText(g, attrs) {
+  if (g.runs) {
+    return g.runs.map(run => `<text x="0" y="0" transform="translate(${run.x.toFixed(1)} ${g.y.toFixed(1)}) scale(${run.scaleX} 1)" font-family="${BANNER_FONT}" font-size="${g.fontSize.toFixed(1)}" font-weight="800" ${attrs}>${run.text}</text>`).join("");
+  }
+  return `<text x="0" y="0" transform="translate(${g.x.toFixed(1)} ${g.y.toFixed(1)}) scale(${g.scaleX} 1)" font-family="${BANNER_FONT}" font-size="${g.fontSize.toFixed(1)}" font-weight="800" letter-spacing="${g.letterSpacing.toFixed(1)}" ${attrs}>${g.text}</text>`;
+}
+
+function euclideanDistanceSquared(coverage, width, height) {
+  const INF = 1e20;
+  const grid = new Float64Array(width * height);
+  for (let pixel = 0; pixel < grid.length; pixel++) grid[pixel] = coverage[pixel] >= 128 ? INF : 0;
+  const size = Math.max(width, height);
+  const f = new Float64Array(size);
+  const d = new Float64Array(size);
+  const z = new Float64Array(size + 1);
+  const v = new Int32Array(size);
+  const transform = length => {
+    let k = 0;
+    v[0] = 0;
+    z[0] = -INF;
+    z[1] = INF;
+    for (let q = 1; q < length; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) {
+        k--;
+        s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      }
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = INF;
+    }
+    k = 0;
+    for (let q = 0; q < length; q++) {
+      while (z[k + 1] < q) k++;
+      d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+    }
+  };
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) f[y] = grid[y * width + x];
+    transform(height);
+    for (let y = 0; y < height; y++) grid[y * width + x] = d[y];
+  }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) f[x] = grid[y * width + x];
+    transform(width);
+    for (let x = 0; x < width; x++) grid[y * width + x] = d[x];
+  }
+  return grid;
+}
+
+function floatBoxBlur(source, width, height, radius) {
+  const span = radius * 2 + 1;
+  const temp = new Float32Array(source.length);
+  const output = new Float32Array(source.length);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    let sum = 0;
+    for (let x = -radius; x <= radius; x++) sum += source[row + Math.min(width - 1, Math.max(0, x))];
+    for (let x = 0; x < width; x++) {
+      temp[row + x] = sum / span;
+      sum += source[row + Math.min(width - 1, x + radius + 1)] - source[row + Math.max(0, x - radius)];
+    }
+  }
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    for (let y = -radius; y <= radius; y++) sum += temp[Math.min(height - 1, Math.max(0, y)) * width + x];
+    for (let y = 0; y < height; y++) {
+      output[y * width + x] = sum / span;
+      sum += temp[Math.min(height - 1, y + radius + 1) * width + x] - temp[Math.max(0, y - radius) * width + x];
+    }
+  }
+  return output;
+}
+
+async function bannerGlassNumber(base, L, g) {
+  const { width: W, height: H } = L;
+  const material = {
+    refractiveIndex: 1.33,
+    blurRadius: 6.5,
+    distortionStrength: 0.051,
+    curvature: 1.46,
+    edgeSharpness: 0.05,
+    glowIntensity: 0.78,
+    shadowStrength: 0.29,
+    borderRadius: 50,
+    opacity: 0.86
+  };
+  const sampleScale = 2;
+  const cornerBlur = Math.max(1, Math.min(material.borderRadius / 4, g.fontSize * 0.024));
+  const maskContrast = Math.max(6, cornerBlur * 2);
+  const svg = body => Buffer.from(
+    `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+  );
+  const sharpMask = await sharp(svg(bannerNumberText(g, 'fill="#FFFFFF"')), { density: 72 * sampleScale })
+    .extractChannel("alpha")
+    .blur(cornerBlur * sampleScale)
+    .png(FAST_PNG)
+    .toBuffer();
+  const maskImage = await sharp(sharpMask)
+    .linear(maskContrast, 128 * (1 - maskContrast))
+    .toColourspace("b-w")
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const maskStride = maskImage.info.channels;
+  const maskWidth = maskImage.info.width;
+  const maskHeight = maskImage.info.height;
+  let minimumX = maskWidth;
+  let minimumY = maskHeight;
+  let maximumX = -1;
+  let maximumY = -1;
+  for (let row = 0; row < maskHeight; row++) {
+    for (let column = 0; column < maskWidth; column++) {
+      if (!maskImage.data[(row * maskWidth + column) * maskStride]) continue;
+      minimumX = Math.min(minimumX, column);
+      minimumY = Math.min(minimumY, row);
+      maximumX = Math.max(maximumX, column);
+      maximumY = Math.max(maximumY, row);
+    }
+  }
+  if (maximumX < minimumX) throw new Error("Maschera del numero vuota");
+
+  const left = Math.max(0, Math.floor(minimumX / sampleScale) - 12);
+  const top = Math.max(0, Math.floor(minimumY / sampleScale) - 12);
+  const width = Math.min(W, Math.ceil((maximumX + 1) / sampleScale) + 12) - left;
+  const height = Math.min(H, Math.ceil((maximumY + 1) / sampleScale) + 12) - top;
+  const sampleWidth = width * sampleScale;
+  const sampleHeight = height * sampleScale;
+  const coverage = new Uint8Array(sampleWidth * sampleHeight);
+  for (let row = 0; row < sampleHeight; row++) {
+    for (let column = 0; column < sampleWidth; column++) {
+      const original = ((top * sampleScale + row) * maskWidth + left * sampleScale + column) * maskStride;
+      coverage[row * sampleWidth + column] = maskImage.data[original];
+    }
+  }
+
+  const inside = euclideanDistanceSquared(coverage, sampleWidth, sampleHeight);
+  const outside = euclideanDistanceSquared(Uint8Array.from(coverage, alpha => 255 - alpha), sampleWidth, sampleHeight);
+  const rawDistance = new Float32Array(coverage.length);
+  for (let pixel = 0; pixel < rawDistance.length; pixel++) {
+    const alpha = coverage[pixel] / 255;
+    rawDistance[pixel] = coverage[pixel] >= 128
+      ? Math.sqrt(inside[pixel]) - 1.5 + alpha
+      : 0.5 - Math.sqrt(outside[pixel]) + alpha;
+  }
+  const distance = floatBoxBlur(floatBoxBlur(rawDistance, sampleWidth, sampleHeight, 2), sampleWidth, sampleHeight, 2);
+  const texture = await sharp(base)
+    .resize(W, H)
+    .toColourspace("srgb")
+    .modulate({ saturation: 1 + (material.refractiveIndex - 1) * 0.5 })
+    .linear(1 + material.edgeSharpness * 0.3, -128 * material.edgeSharpness * 0.3)
+    .removeAlpha()
+    .png(FAST_PNG)
+    .toBuffer();
+  const photo = await sharp(texture).raw().toBuffer();
+  const blurredPhoto = await sharp(texture).blur(material.blurRadius).raw().toBuffer();
+  const pixels = Buffer.alloc(sampleWidth * sampleHeight * 4);
+  const centerX = (minimumX + maximumX + 1) / (2 * sampleScale);
+  const centerY = (minimumY + maximumY + 1) / (2 * sampleScale);
+  const halfWidth = (maximumX - minimumX + 1) / (2 * sampleScale);
+  const halfHeight = (maximumY - minimumY + 1) / (2 * sampleScale);
+  const eta = 1 / material.refractiveIndex;
+  const etaSquared = eta * eta;
+  const contourRefraction = Math.sqrt(1 - etaSquared);
+  const smoothstep = (lower, upper, value) => {
+    const fraction = Math.max(0, Math.min(1, (value - lower) / (upper - lower)));
+    return fraction * fraction * (3 - 2 * fraction);
+  };
+
+  for (let row = 1; row < sampleHeight - 1; row++) {
+    for (let column = 1; column < sampleWidth - 1; column++) {
+      const pixel = row * sampleWidth + column;
+      if (!coverage[pixel]) continue;
+      const positionX = left + (column + 0.5) / sampleScale;
+      const positionY = top + (row + 0.5) / sampleScale;
+      const localX = (positionX - centerX) / halfWidth;
+      const localY = (positionY - centerY) / halfHeight * W / H;
+      const radialLength = Math.hypot(localX, localY);
+      const radialDistance = Math.min(1, radialLength);
+      const curvature = Math.pow(radialDistance, material.curvature);
+      const radialFactor = eta * (1 - curvature * curvature)
+        + Math.sqrt(1 - etaSquared * (1 - Math.pow(curvature, 4)));
+      const radialOffset = curvature * radialFactor * material.distortionStrength;
+
+      const gradientX = distance[pixel - 1] - distance[pixel + 1];
+      const gradientY = distance[pixel - sampleWidth] - distance[pixel + sampleWidth];
+      const gradientLength = Math.hypot(gradientX, gradientY);
+      const normalX = gradientLength ? gradientX / gradientLength : 0;
+      const normalY = gradientLength ? gradientY / gradientLength : 0;
+      const edgeDistance = Math.abs(distance[pixel]) / sampleScale;
+      const contourFalloff = Math.exp(-edgeDistance * material.edgeSharpness);
+      const contourOffset = contourRefraction * 0.35 * Math.pow(contourFalloff, 2.5);
+      const contourWeight = Math.max(0, Math.min(1,
+        smoothstep(0, 1, edgeDistance) - smoothstep(0.5, 1, radialDistance) * 0.5));
+      const radialX = radialLength ? localX / radialLength * radialOffset : 0;
+      const radialY = radialLength ? localY / radialLength * radialOffset : 0;
+      const sampleX = Math.max(0, Math.min(W - 1.001,
+        positionX - (radialX * (1 - contourWeight) + normalX * contourOffset * contourWeight) * W));
+      const sampleY = Math.max(0, Math.min(H - 1.001,
+        positionY - (radialY * (1 - contourWeight) + normalY * contourOffset * contourWeight) * H));
+      const sampleLeft = Math.floor(sampleX);
+      const sampleTop = Math.floor(sampleY);
+      const fractionX = sampleX - sampleLeft;
+      const fractionY = sampleY - sampleTop;
+      const topLeft = (sampleTop * W + sampleLeft) * 3;
+      const bottomLeft = topLeft + W * 3;
+      const topShadow = (1 - smoothstep(-1.5, -0.2, localY)) * material.shadowStrength;
+      const glow = Math.exp(-edgeDistance * 0.18) * material.glowIntensity
+        * (0.35 + 0.65 * Math.max(0, -0.6 * normalX - 0.8 * normalY));
+      const border = (1 - smoothstep(0, 1, edgeDistance)) * 0.28;
+      const inset = (1 - smoothstep(0, 2, edgeDistance)) * Math.max(0, -normalY) * material.glowIntensity * 0.6;
+      const rim = Math.min(1, border + inset);
+
+      for (let channel = 0; channel < 3; channel++) {
+        const upper = photo[topLeft + channel] * (1 - fractionX) + photo[topLeft + 3 + channel] * fractionX;
+        const lower = photo[bottomLeft + channel] * (1 - fractionX) + photo[bottomLeft + 3 + channel] * fractionX;
+        const blurredUpper = blurredPhoto[topLeft + channel] * (1 - fractionX) + blurredPhoto[topLeft + 3 + channel] * fractionX;
+        const blurredLower = blurredPhoto[bottomLeft + channel] * (1 - fractionX) + blurredPhoto[bottomLeft + 3 + channel] * fractionX;
+        const transmitted = (upper * 0.9 + blurredUpper * 0.1) * (1 - fractionY)
+          + (lower * 0.9 + blurredLower * 0.1) * fractionY;
+        const body = (transmitted * 0.93 + 255 * 0.07) * (1 - topShadow);
+        const color = body * (1 - glow) + 255 * 0.90 * glow;
+        pixels[pixel * 4 + channel] = Math.round(color * (1 - rim) + 255 * rim);
+      }
+      pixels[pixel * 4 + 3] = Math.round(coverage[pixel] * material.opacity);
+    }
+  }
+
+  const glass = await sharp(pixels, { raw: { width: sampleWidth, height: sampleHeight, channels: 4 } })
+    .resize(width, height, { kernel: sharp.kernel.lanczos3 })
+    .png(FAST_PNG)
+    .toBuffer();
+  const roundedAlpha = await sharp(glass).extractChannel("alpha").raw().toBuffer();
+  const shadowPixels = Buffer.alloc(W * H * 4);
+  for (let row = 0; row < height; row++) {
+    const shadowRow = top + row + 3;
+    if (shadowRow >= H) continue;
+    for (let column = 0; column < width; column++) {
+      const sourceAlpha = roundedAlpha[row * width + column];
+      shadowPixels[(shadowRow * W + left + column) * 4 + 3] =
+        Math.round(sourceAlpha * material.shadowStrength / material.opacity);
+    }
+  }
+  const shadow = await sharp(shadowPixels, { raw: { width: W, height: H, channels: 4 } })
+    .blur(4)
+    .png(FAST_PNG)
+    .toBuffer();
+
+  return [
+    { input: shadow, left: 0, top: 0 },
+    { input: glass, left, top }
+  ];
+}
+
+async function bannerTitleLogo(logoUrl, L) {
+  if (!logoUrl) return null;
+
+  try {
+    const raw = await fetchBuffer(logoUrl);
+    let src = raw;
+    try {
+      src = await sharp(raw).trim().png(FAST_PNG).toBuffer();
+    } catch {}
+
+    // Size by area so wide and stacked logos get a similar visual weight.
+    const { width: sw = 1, height: sh = 1 } = await sharp(src).metadata();
+    const ratio = sw / sh;
+    const { maxWidth, maxHeight, area, right, bottom } = L.logo;
+    const fit = Math.min(1, maxWidth / Math.sqrt(area * ratio), maxHeight / Math.sqrt(area / ratio));
+    const w = Math.max(1, Math.round(Math.sqrt(area * ratio) * fit));
+    const h = Math.max(1, Math.round(Math.sqrt(area / ratio) * fit));
+
+    const { data, info } = await sharp(src)
+      .resize(w, h, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // Average brightness of the visible pixels (raw output may be premultiplied).
+    let value = 0;
+    let weight = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      const v = Math.max(data[i], data[i + 1], data[i + 2]);
+      value += info.premultiplied ? v * 255 : v * a;
+      weight += a;
+    }
+    const darkLogo = weight > 0 && value / weight < 80;
+
+    const rawInfo = { width: info.width, height: info.height, channels: info.channels, premultiplied: info.premultiplied };
+    const logo = await sharp(data, { raw: rawInfo }).png(FAST_PNG).toBuffer();
+    // Separate pipeline: sharp extracts channels after extend/blur.
+    const mask = await sharp(data, { raw: rawInfo }).extractChannel("alpha").png(FAST_PNG).toBuffer();
+    const pad = 28;
+    const alpha = await sharp(mask)
+      .extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .blur(darkLogo ? 12 : 9)
+      .linear(darkLogo ? 0.55 : 0.8, 0)
+      .png(FAST_PNG)
+      .toBuffer();
+    const halo = await sharp({
+      create: {
+        width: w + pad * 2,
+        height: h + pad * 2,
+        channels: 3,
+        background: darkLogo ? { r: 255, g: 255, b: 255 } : { r: 0, g: 0, b: 0 }
+      }
+    })
+      .joinChannel(alpha)
+      .png(FAST_PNG)
+      .toBuffer();
+
+    const left = L.width - right - w;
+    const top = L.height - bottom - h;
+    return {
+      dark: darkLogo,
+      box: { left, top, width: w, height: h },
+      layers: [
+        { input: halo, left: left - pad, top: top - pad + (darkLogo ? 0 : 4) },
+        { input: logo, left, top }
+      ]
+    };
+  } catch (err) {
+    console.warn(`Logo titolo non disponibile (${logoUrl}):`, err.message);
+    return null;
+  }
+}
+
+// Light logo on a bright area: darken just around it, more the brighter the area.
+async function bannerLogoShade(base, L, titleLogo) {
+  if (!titleLogo || titleLogo.dark) return null;
+
+  const { left, top, width, height } = titleLogo.box;
+  const { channels } = await sharp(base).extract({ left, top, width, height }).stats();
+  const brightness = 0.2126 * channels[0].mean + 0.7152 * channels[1].mean + 0.0722 * channels[2].mean;
+  if (brightness < 95) return null;
+
+  const opacity = Math.min(0.7, 0.25 + ((brightness - 95) / 160) * 0.45).toFixed(2);
+  return {
+    input: Buffer.from(`
+      <svg width="${L.width}" height="${L.height}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="s">
+            <stop offset="0" stop-color="#000000" stop-opacity="${opacity}"/>
+            <stop offset=".55" stop-color="#000000" stop-opacity="${(opacity * 0.6).toFixed(2)}"/>
+            <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <ellipse cx="${left + width / 2}" cy="${top + height / 2}" rx="${width * 0.85}" ry="${height * 1.25}" fill="url(#s)"/>
+      </svg>
+    `),
+    left: 0,
+    top: 0
+  };
+}
+
+async function createBannerCover({ rank, artworkUrl, logoUrl, shape, genre, rating, catalogId, showLogo }) {
+  const L = BANNER_LAYOUTS[normalizedShape(shape)];
+  const zoneW = Math.round(L.width * L.zone);
+
+  const [artworkBuffer, titleLogo] = await Promise.all([
+    fetchBuffer(artworkUrl),
+    bannerTitleLogo(logoUrl, L)
+  ]);
+
+  const base = await bannerBackdrop(artworkBuffer, L, zoneW);
+  const displayGenre = cleanGenre(genre);
+  const displayRating = formatRating(rating);
+  const provider = showLogo && catalogId ? getProviderLogoSvg(catalogId) : null;
+  const meta = bannerMetaLayout(L, zoneW, {
+    genre: displayGenre,
+    rating: displayRating,
+    provider
+  });
+  const g = await bannerNumberGeometry(rank, L, zoneW, {
+    hasProvider: Boolean(provider?.svg),
+    hasMeta: Boolean(displayGenre || displayRating)
+  });
+
+  const layers = await bannerGlassNumber(base, L, g);
+  if (meta.height) layers.push({ input: meta.render(g.metaTop, g.centerX), left: 0, top: 0 });
+  const logoShade = await bannerLogoShade(base, L, titleLogo);
+  if (logoShade) layers.push(logoShade);
+  if (titleLogo) layers.push(...titleLogo.layers);
+
+  // Full-bleed photo without transparency: JPEG is ~7x lighter than PNG.
+  return sharp(base)
+    .composite(layers)
+    .jpeg({ quality: 88, chromaSubsampling: "4:4:4", mozjpeg: true })
+    .toBuffer();
+}
+
 export async function createTopCover({
   rank,
   artworkUrl,
+  logoUrl = "",
+  style = "classic",
   shape = "landscape",
   accent = "#FFFFFF",
   canvasBackground = "provider",
@@ -871,6 +1545,12 @@ export async function createTopCover({
   showLogo = true
 }) {
   if (!artworkUrl) throw new Error("artworkUrl mancante.");
+  const requestedRank = Number(rank);
+  rank = Number.isFinite(requestedRank) ? Math.max(1, Math.min(10, Math.trunc(requestedRank))) : 1;
+
+  if (canvasBackground === "fresh" || normalizeStyle(style) === "banner") {
+    return createBannerCover({ rank, artworkUrl, logoUrl, shape, genre, rating, catalogId, showLogo });
+  }
 
   const normalized = normalizedShape(shape);
   const layout = LAYOUTS[normalized];

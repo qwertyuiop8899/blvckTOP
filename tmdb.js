@@ -152,3 +152,25 @@ export function chooseLogo(images) {
     ? `${TMDB_IMAGE}/w500${items[0].file_path}`
     : null;
 }
+
+function chooseTextless(items, size) {
+  const textless = [...(items || [])]
+    .filter(x => x.file_path && !x.iso_639_1)
+    .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+
+  return textless.length
+    ? `${TMDB_IMAGE}/${size}${textless[0].file_path}`
+    : null;
+}
+
+// Banner: textless art + title logo when both exist, otherwise the regular art (title already printed on it).
+export function chooseBannerArtwork(images, shape) {
+  const logoUrl = chooseLogo(images);
+  const textless = logoUrl
+    ? (shape === "poster" ? chooseTextless(images?.posters, "w780") : chooseTextless(images?.backdrops, "w1280"))
+    : null;
+
+  return textless
+    ? { artworkUrl: textless, logoUrl }
+    : { artworkUrl: shape === "poster" ? choosePoster(images) : chooseBackdrop(images), logoUrl: "" };
+}
