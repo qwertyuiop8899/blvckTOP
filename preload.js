@@ -27,6 +27,7 @@ function catalogAccent(catalog = {}) {
   const key = `${catalog.id || ""} ${catalog.name || ""}`.toLowerCase();
 
   if (key.includes("netflix")) return "#E50914";
+  if (key.includes("top10") || key.includes("italia") || key.includes("italy")) return "#009246";
   if (key.includes("prime") || key.includes("amazon")) return "#00A8E1";
   if (key.includes("disney")) return "#2D7DFF";
   if (key.includes("apple")) return "#D8DFEA";
@@ -108,7 +109,27 @@ export async function preloadAllCatalogs(sourceManifestUrl, options = {}) {
     const sourceManifest = await manifestResponse.json();
     if (!Array.isArray(sourceManifest.catalogs)) throw new Error("Cataloghi sorgente non validi.");
 
-    const catalogs = (Array.isArray(sourceManifest.catalogs) ? sourceManifest.catalogs : [])
+    const GENERAL_TOP10_CATALOGS = [
+      {
+        type: "movie",
+        id: "t10.movie.top10",
+        name: "Top 10 Italia",
+        extra: [{ name: "skip", isRequired: false }]
+      },
+      {
+        type: "series",
+        id: "t10.series.top10",
+        name: "Top 10 Italia",
+        extra: [{ name: "skip", isRequired: false }]
+      }
+    ];
+
+    const sourceCatalogs = Array.isArray(sourceManifest.catalogs) ? sourceManifest.catalogs : [];
+    const existingKeys = new Set(sourceCatalogs.map(c => `${c.type}:${c.id}`));
+    const toInject = GENERAL_TOP10_CATALOGS.filter(c => !existingKeys.has(`${c.type}:${c.id}`));
+    const allCatalogs = [...toInject, ...sourceCatalogs];
+
+    const catalogs = allCatalogs
       .filter(c => {
         const id = String(c.id || "").toLowerCase();
         const name = String(c.name || "").toLowerCase();

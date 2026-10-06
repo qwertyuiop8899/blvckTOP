@@ -509,6 +509,12 @@ export function getProviderLogoSvg(catalogKey = "") {
     return svg ? { width: 80, height: 18, svg } : null;
   }
 
+  // 15. Top 10 Italia (Italian flag)
+  if (key.includes("top10") || key.includes("italia") || key.includes("italy")) {
+    const svg = loadSvg("italy.svg");
+    return svg ? { width: 60, height: 40, svg } : null;
+  }
+
   return null;
 }
 

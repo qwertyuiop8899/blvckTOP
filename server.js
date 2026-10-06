@@ -84,6 +84,32 @@ function sourceBaseUrl() {
   return SOURCE_MANIFEST_URL.replace(/\/manifest\.json(?:\?.*)?$/i, "");
 }
 
+const GENERAL_TOP10_CATALOGS = [
+  {
+    type: "movie",
+    id: "t10.movie.top10",
+    name: "Top 10 Italia",
+    extra: [{ name: "skip", isRequired: false }]
+  },
+  {
+    type: "series",
+    id: "t10.series.top10",
+    name: "Top 10 Italia",
+    extra: [{ name: "skip", isRequired: false }]
+  }
+];
+
+export async function getSourceManifest() {
+  const source = await fetchJson(SOURCE_MANIFEST_URL);
+  const existing = Array.isArray(source?.catalogs) ? source.catalogs : [];
+  const existingKeys = new Set(existing.map(c => `${c.type}:${c.id}`));
+  const toInject = GENERAL_TOP10_CATALOGS.filter(c => !existingKeys.has(`${c.type}:${c.id}`));
+  return {
+    ...source,
+    catalogs: [...toInject, ...existing]
+  };
+}
+
 function publicBase(req) {
   const proto = req.headers["x-forwarded-proto"] || req.protocol;
   return `${proto}://${req.get("host")}`;
@@ -163,6 +189,7 @@ export function catalogAccent(catalog = {}) {
   const key = `${catalog.id || ""} ${catalog.name || ""}`.toLowerCase();
 
   if (key.includes("netflix")) return "#E50914";
+  if (key.includes("top10") || key.includes("italia") || key.includes("italy")) return "#009246";
   if (key.includes("prime") || key.includes("amazon")) return "#00A8E1";
   if (key.includes("disney")) return "#2D7DFF";
   if (key.includes("apple")) return "#D8DFEA";
@@ -251,7 +278,7 @@ async function buildCoverUrl(
 
 app.get("/api/catalogs", async (_req, res) => {
   try {
-    const source = await fetchJson(SOURCE_MANIFEST_URL);
+    const source = await getSourceManifest();
 
     const catalogs = (source.catalogs || [])
       .filter(c => {
@@ -289,7 +316,7 @@ app.post("/api/generate", async (req, res) => {
       });
     }
 
-    const source = await fetchJson(SOURCE_MANIFEST_URL);
+    const source = await getSourceManifest();
 
     const available = new Map(
       (source.catalogs || []).map(c => [
@@ -377,7 +404,7 @@ app.get("/api/stats", (_req, res) => {
 
 app.get("/manifest.json", async (_req, res) => {
   try {
-    const source = await fetchJson(SOURCE_MANIFEST_URL);
+    const source = await getSourceManifest();
     const catalogs = (source.catalogs || [])
       .filter(c => {
         const id = String(c.id || "").toLowerCase();
@@ -415,7 +442,7 @@ app.get("/manifest.json", async (_req, res) => {
 app.get("/c/:token/manifest.json", async (req, res) => {
   try {
     const config = decryptConfig(req.params.token);
-    const source = await fetchJson(SOURCE_MANIFEST_URL);
+    const source = await getSourceManifest();
     const selected = selectedCatalogSet(config);
 
     const available = new Map((source.catalogs || []).map(c => [catalogKey(c.type, c.id), c]));

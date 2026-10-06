@@ -648,10 +648,12 @@
       tmdb:      "/icons/tmdb.svg",
       disney:    "/icons/disney.svg",
       now:       "/icons/now.svg",
-      raiplay:   "/icons/raiplay.svg"
+      raiplay:   "/icons/raiplay.svg",
+      italy:     "/icons/italy.svg"
     };
 
     const BRANDS = [
+      [/^italia$|top\s*10\s*italia/i, { url: LOGO.italy, wide: true, color: "#009246" }],
       [/netflix/i,             { id: "netflix", color: "#E50914" }],
       [/disney/i,              { url: LOGO.disney, wide: true, color: "#155EEF" }],
       [/rai\s?play|\brai\b/i,  { url: LOGO.raiplay, wide: true, color: "#0066CC" }],
@@ -747,7 +749,10 @@
         if (id.includes("last-video") || id.includes("calendar-video")) return;
         if (rawName.includes("last video") || rawName.includes("calendar video")) return;
 
-        const name = providerOf(c.name);
+        let name = providerOf(c.name);
+        if (id === "t10.movie.top10" || id === "t10.series.top10" || name.toLowerCase() === "italia") {
+          name = "Top 10 Italia";
+        }
         const key = name.toLowerCase();
         if (!map.has(key)) map.set(key, { key, name, items: [] });
         map.get(key).items.push({ 
@@ -760,7 +765,17 @@
         });
       });
       map.forEach(g => g.items.sort((a, b) => (a.type === "movie" ? 0 : 1) - (b.type === "movie" ? 0 : 1)));
-      return [...map.values()];
+      
+      const list = [...map.values()];
+      // Posiziona Top 10 Italia per prima, seguita da Netflix e gli altri
+      list.sort((a, b) => {
+        const aIsTop10 = a.key.includes("top 10 italia") || a.key === "italia";
+        const bIsTop10 = b.key.includes("top 10 italia") || b.key === "italia";
+        if (aIsTop10 && !bIsTop10) return -1;
+        if (!aIsTop10 && bIsTop10) return 1;
+        return 0;
+      });
+      return list;
     }
 
     const allItems = () => groups.flatMap(g => g.items);
