@@ -440,9 +440,28 @@
 
     .catalog-order { border-top: 1px solid var(--line); }
     .order-row {
-      display: grid; grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) 80px;
-      gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line);
+      display: grid; grid-template-columns: 28px minmax(110px, 180px) minmax(0, 1fr) 80px;
+      gap: 12px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--line);
+      border-radius: 8px; transition: background .15s, border-color .15s, opacity .15s;
     }
+    .order-row.dragging {
+      opacity: .4;
+      background: rgba(255,255,255,.05);
+    }
+    .order-row.drag-over-top {
+      border-top: 2px solid var(--accent);
+    }
+    .order-row.drag-over-bottom {
+      border-bottom: 2px solid var(--accent);
+    }
+    .drag-handle {
+      width: 24px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: grab; color: var(--muted); user-select: none; -webkit-user-select: none;
+      touch-action: none; border-radius: 4px; transition: color .15s, background .15s;
+    }
+    .drag-handle:hover { color: #fff; background: rgba(255,255,255,.08); }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-handle svg { width: 16px; height: 16px; fill: currentColor; }
     .order-source { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
     .order-name {
       min-width: 0; width: 100%; height: 40px; padding: 0 12px; border-radius: 6px;
@@ -504,8 +523,8 @@
       .search { flex: 1 1 100%; } .counter { margin-left: 0; width: 100%; padding: 0; }
       .url-row { flex-direction: column; } .url-row .ctl { width: 100%; }
       .gen { flex-direction: column; align-items: stretch; } .gen .btn { justify-content: center; }
-      .order-row { grid-template-columns: minmax(0, 1fr) 80px; gap: 8px; }
-      .order-source { grid-column: 1 / -1; }
+      .order-row { grid-template-columns: 28px minmax(0, 1fr) 80px; gap: 8px; }
+      .order-source { grid-column: 2 / -1; }
     }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
@@ -762,6 +781,24 @@
       message.textContent = "";
     }
 
+    let draggedCatalogKey = null;
+
+    function reorderCatalogKeys(sourceKey, targetKey, dropAfter = false) {
+      if (!sourceKey || !targetKey || sourceKey === targetKey) return;
+      const srcIdx = catalogOrder.indexOf(sourceKey);
+      if (srcIdx === -1) return;
+      catalogOrder.splice(srcIdx, 1);
+      let tgtIdx = catalogOrder.indexOf(targetKey);
+      if (tgtIdx === -1) {
+        catalogOrder.push(sourceKey);
+      } else {
+        if (dropAfter) tgtIdx++;
+        catalogOrder.splice(tgtIdx, 0, sourceKey);
+      }
+      invalidateManifest();
+      renderSelectedCatalogs();
+    }
+
     function renderSelectedCatalogs() {
       const items = orderedCatalogItems();
       const list = $("catalogOrder");
@@ -772,6 +809,105 @@
         const row = document.createElement("div");
         row.className = "order-row";
         row.dataset.catalogKey = key;
+        row.draggable = true;
+
+        // Drag handle icon
+        const handle = document.createElement("div");
+        handle.className = "drag-handle";
+        handle.title = "Trascina per riordinare";
+        handle.setAttribute("aria-label", "Trascina per riordinare");
+        handle.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>`;
+
+        // Drag and Drop (HTML5)
+        row.addEventListener("dragstart", (e) => {
+          draggedCatalogKey = key;
+          row.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", key);
+        });
+
+        row.addEventListener("dragend", () => {
+          row.classList.remove("dragging");
+          list.querySelectorAll(".order-row").forEach(r => {
+            r.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+          draggedCatalogKey = null;
+        });
+
+        row.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (!draggedCatalogKey || draggedCatalogKey === key) return;
+          const rect = row.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          if (e.clientY < midY) {
+            row.classList.add("drag-over-top");
+            row.classList.remove("drag-over-bottom");
+          } else {
+            row.classList.add("drag-over-bottom");
+            row.classList.remove("drag-over-top");
+          }
+        });
+
+        row.addEventListener("dragleave", (e) => {
+          if (!row.contains(e.relatedTarget)) {
+            row.classList.remove("drag-over-top", "drag-over-bottom");
+          }
+        });
+
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const targetKey = key;
+          const isBottom = row.classList.contains("drag-over-bottom");
+          row.classList.remove("drag-over-top", "drag-over-bottom");
+          if (draggedCatalogKey && draggedCatalogKey !== targetKey) {
+            reorderCatalogKeys(draggedCatalogKey, targetKey, isBottom);
+          }
+        });
+
+        // Touch Drag Support for mobile
+        let touchStartY = 0;
+        let lastTargetRow = null;
+        handle.addEventListener("touchstart", (e) => {
+          touchStartY = e.touches[0].clientY;
+          draggedCatalogKey = key;
+          row.classList.add("dragging");
+        }, { passive: true });
+
+        handle.addEventListener("touchmove", (e) => {
+          if (!draggedCatalogKey) return;
+          const touchY = e.touches[0].clientY;
+          const element = document.elementFromPoint(e.touches[0].clientX, touchY);
+          const targetRow = element ? element.closest(".order-row") : null;
+
+          list.querySelectorAll(".order-row").forEach(r => {
+            r.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+
+          if (targetRow && targetRow !== row) {
+            lastTargetRow = targetRow;
+            const rect = targetRow.getBoundingClientRect();
+            if (touchY < rect.top + rect.height / 2) {
+              targetRow.classList.add("drag-over-top");
+            } else {
+              targetRow.classList.add("drag-over-bottom");
+            }
+          }
+        }, { passive: true });
+
+        handle.addEventListener("touchend", () => {
+          if (draggedCatalogKey && lastTargetRow && lastTargetRow.dataset.catalogKey !== key) {
+            const isBottom = lastTargetRow.classList.contains("drag-over-bottom");
+            reorderCatalogKeys(draggedCatalogKey, lastTargetRow.dataset.catalogKey, isBottom);
+          }
+          row.classList.remove("dragging");
+          list.querySelectorAll(".order-row").forEach(r => {
+            r.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+          draggedCatalogKey = null;
+          lastTargetRow = null;
+        });
+
         const original = document.createElement("div");
         original.className = "order-source";
         original.textContent = `${index + 1}. ${item.name} (${typeLabel(item.type)})`;
@@ -813,7 +949,7 @@
           });
           actions.append(button);
         });
-        row.append(original, input, actions);
+        row.append(handle, original, input, actions);
         list.append(row);
       });
     }
